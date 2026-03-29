@@ -1,0 +1,75 @@
+{% extends 'literature/base.html' %}
+
+{% block title %}文献列表 - 医学文献智能检索系统{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>医学文献列表</h1>
+    <p>共 {{ total_count }} 条文献</p>
+    
+    <div class="filter-section">
+        <div class="filter-group">
+            <label>主题分类：</label>
+            <select id="categoryFilter" onchange="filterByCategory()">
+                <option value="">全部</option>
+                {% for cat in categories %}
+                <option value="{{ cat.id }}" {% if current_category == cat.id %}selected{% endif %}>{{ cat.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="filter-group">
+            <a href="/search/" class="btn">高级检索</a>
+        </div>
+    </div>
+    
+    <div class="literature-list-page">
+        {% for lit in literatures %}
+        <div class="literature-card">
+            <h3><a href="/literatures/?q={{ lit.title|urlencode }}">{{ lit.title }}</a></h3>
+            <div class="literature-meta">
+                {% if lit.category %}<span class="tag">{{ lit.category }}</span>{% endif %}
+                <span>{{ lit.journal|default:'未知期刊' }}</span>
+                {% if lit.publish_year %}<span>{{ lit.publish_year }}年</span>{% endif %}
+            </div>
+            {% if lit.text %}
+            <p class="literature-abstract">{{ lit.text|truncatechars:200 }}</p>
+            {% endif %}
+        </div>
+        {% empty %}
+        <div class="empty-message">
+            <p>暂无文献数据</p>
+            <a href="/data-import/" class="btn">导入数据</a>
+        </div>
+        {% endfor %}
+    </div>
+    
+    {% if num_pages > 1 %}
+    <div class="pagination">
+        {% if has_prev %}
+        <a href="?page=1{% if current_category %}&category={{ current_category }}{% endif %}{% if query %}&q={{ query }}{% endif %}">首页</a>
+        <a href="?page={{ current_page|add:"-1" }}{% if current_category %}&category={{ current_category }}{% endif %}{% if query %}&q={{ query }}{% endif %}">上一页</a>
+        {% endif %}
+        
+        <span class="current">第 {{ current_page }} / {{ num_pages }} 页</span>
+        
+        {% if has_next %}
+        <a href="?page={{ current_page|add:"1" }}{% if current_category %}&category={{ current_category }}{% endif %}{% if query %}&q={{ query }}{% endif %}">下一页</a>
+        <a href="?page={{ num_pages }}{% if current_category %}&category={{ current_category }}{% endif %}{% if query %}&q={{ query }}{% endif %}">末页</a>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function filterByCategory() {
+    const categoryId = document.getElementById('categoryFilter').value;
+    if (categoryId) {
+        window.location.href = '/literatures/?category=' + categoryId;
+    } else {
+        window.location.href = '/literatures/';
+    }
+}
+</script>
+{% endblock %}

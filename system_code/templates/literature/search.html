@@ -1,0 +1,236 @@
+{% extends 'literature/base.html' %}
+
+{% block title %}文献检索 - 医学文献智能检索系统{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>医学文献检索</h1>
+    
+    <div class="search-section">
+        <div class="search-box-large">
+            <input type="text" id="searchInput" placeholder="输入关键词或描述您的问题..." value="{{ query|default:'' }}">
+            <select id="searchType">
+                <option value="keyword" {% if search_type == 'keyword' %}selected{% endif %}>关键词检索</option>
+                <option value="semantic" {% if search_type == 'semantic' %}selected{% endif %}>语义检索</option>
+            </select>
+            <button onclick="performSearch()">检索</button>
+        </div>
+        
+        <div class="search-tips">
+            <h4>检索说明：</h4>
+            <ul>
+                <li><strong>关键词检索：</strong>精确匹配标题、摘要、关键词中的文字</li>
+                <li><strong>语义检索：</strong>理解查询意图，返回语义相关的文献</li>
+            </ul>
+        </div>
+    </div>
+    
+    <div id="searchResults" class="results-section">
+        <div class="results-header">
+            <h2>检索结果 <span id="resultsCount"></span></h2>
+        </div>
+        
+        <div id="resultsList" class="results-list">
+            <div class="loading">正在加载...</div>
+        </div>
+        
+        <div id="pagination" class="pagination"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentQuery = '';
+let currentType = 'keyword';
+let currentPage = 1;
+
+function performSearch() {
+    currentQuery = document.getElementById('searchInput').value.trim();
+    currentType = document.getElementById('searchType').value;
+    currentPage = 1;
+    
+    if (!currentQuery) {
+        alert('请输入搜索内容');
+        return;
+    }
+    
+    search();
+}
+
+function search() {
+    const resultsList = document.getElementById('resultsList');
+    const resultsCount = document.getElementById('resultsCount');
+    
+    resultsList.innerHTML = '<div class="loading">正在检索...</div>';
+    
+    const url = currentType === 'semantic' 
+        ? '/api/semantic-search/' 
+        : '/api/search/';
+    
+    const data = {
+        query: currentQuery,
+        page: currentPage,
+        type: currentType
+    };
+    
+    fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify(data)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            resultsList.innerHTML = `<div class="error">${data.error}</div>`;
+            return;
+        }
+        
+        resultsCount.textContent = `(共 ${data.total} 条结果)`;
+        displayResults(data.results);
+        displayPagination(data);
+    })
+    .catch(error => {
+        resultsList.innerHTML = `<div class="error">检索失败: ${error}</div>`;
+    });
+}
+
+function displayResults(results) {
+    const resultsList = document.getElementById('resultsList');
+    
+    if (!results || results.length === 0) {
+        resultsList.innerHTML = '<div class="empty-message">未找到相关文献</div>';
+        return;
+    }
+    
+    let html = '';
+    results.forEach(lit => {
+        html += `
+        <div class="result-item">
+            <h3><a href="/literature/${lit.id}/">${lit.title}</a></h3>
+            <div class="result-meta">
+                ${lit.category ? `<span class="tag">${lit.category}</span>` : ''}
+                ${lit.journal ? `<span>期刊: ${lit.journal}</span>` : ''}
+                ${lit.publish_year ? `<span>年份: ${lit.publish_year}</span>` : ''}
+                ${lit.similarity ? `<span class="similarity">相似度: ${lit.similarity}</span>` : ''}
+            </div>
+            <p class="result-abstract">${lit.abstract || '暂无摘要'}</p>
+            ${lit.keywords ? `<div class="result-keywords">关键词: ${lit.keywords}</div>` : ''}
+            <div class="result-actions">
+                <button onclick="findSimilar(${lit.id})">查找相似文献</button>
+                <button onclick="generateSummary(${lit.id})">生成摘要</button>
+            </div>
+        </div>
+        `;
+    });
+    
+    resultsList.innerHTML = html;
+}
+
+function displayPagination(data) {
+    const pagination = document.getElementById('pagination');
+    if (data.total_pages <= 1) {
+        pagination.innerHTML = '';
+        return;
+    }
+    
+    let html = '';
+    for (let i = 1; i <= data.total_pages; i++) {
+        if (i === data.page) {
+            html += `<span class="current">${i}</span>`;
+        } else {
+            html += `<a href="#" onclick="goToPage(${i}); return false;">${i}</a>`;
+        }
+    }
+    pagination.innerHTML = html;
+}
+
+function goToPage(page) {
+    currentPage = page;
+    search();
+}
+
+function findSimilar(literatureId) {
+    fetch('/api/similar/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify({literature_id: literatureId})
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.similar_literatures && data.similar_literatures.length > 0) {
+            let html = '<h3>相似文献推荐</h3>';
+            data.similar_literatures.forEach(lit => {
+                html += `
+                <div class="similar-item">
+                    <a href="/literature/${lit.id}/">${lit.title}</a>
+                    <span>相似度: ${lit.similarity}</span>
+                </div>
+                `;
+            });
+            alert(html);
+        } else {
+            alert('未找到相似文献');
+        }
+    });
+}
+
+function generateSummary(literatureId) {
+    fetch('/api/summary/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify({literature_id: literatureId})
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.summary) {
+            alert('摘要:\\n' + data.summary + '\\n\\n关键词:\\n' + data.keywords.join(', '));
+        }
+    });
+}
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+document.getElementById('searchInput').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') {
+        performSearch();
+    }
+});
+
+window.onload = function() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const query = urlParams.get('q');
+    const type = urlParams.get('type');
+    
+    if (query) {
+        document.getElementById('searchInput').value = query;
+        if (type) {
+            document.getElementById('searchType').value = type;
+        }
+        search();
+    }
+};
+</script>
+{% endblock %}

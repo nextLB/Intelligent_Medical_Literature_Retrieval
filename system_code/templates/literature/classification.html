@@ -1,0 +1,152 @@
+{% extends 'literature/base.html' %}
+
+{% block title %}主题分类 - 医学文献智能检索系统{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>医学文献主题分类</h1>
+    <p class="intro">基于BERT预训练模型对医学文献进行自动分类</p>
+    
+    <div class="classification-section">
+        <div class="classify-input">
+            <h2>文本分类</h2>
+            <textarea id="classifyText" placeholder="请输入医学文献的标题和摘要进行分类..." rows="6"></textarea>
+            <button onclick="classifyText()">开始分类</button>
+        </div>
+        
+        <div id="classifyResult" class="classify-result" style="display:none;">
+            <h3>分类结果</h3>
+            <div id="resultContent"></div>
+        </div>
+    </div>
+    
+    <div class="category-section">
+        <h2>分类类别说明</h2>
+        <div class="category-grid">
+            <div class="category-card">
+                <h3>肿瘤学</h3>
+                <p>包括肺癌、胃癌、肝癌、乳腺癌等各类肿瘤研究</p>
+            </div>
+            <div class="category-card">
+                <h3>内分泌代谢</h3>
+                <p>包括糖尿病、甲状腺疾病、骨质疏松等</p>
+            </div>
+            <div class="category-card">
+                <h3>心血管</h3>
+                <p>包括高血压、冠心病、心力衰竭等</p>
+            </div>
+            <div class="category-card">
+                <h3>神经内科</h3>
+                <p>包括阿尔茨海默病、帕金森病、脑卒中等</p>
+            </div>
+            <div class="category-card">
+                <h3>感染性疾病</h3>
+                <p>包括肺炎、肝炎、结核病等</p>
+            </div>
+            <div class="category-card">
+                <h3>中医药</h3>
+                <p>包括中药、针灸、推拿等中医药研究</p>
+            </div>
+            <div class="category-card">
+                <h3>其他</h3>
+                <p>其他医学领域的研究</p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="auto-classify-section">
+        <h2>批量自动分类</h2>
+        <p>对未分类的文献进行自动分类</p>
+        <button onclick="autoClassifyAll()">开始批量分类</button>
+        <div id="batchResult" class="batch-result"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function classifyText() {
+    const text = document.getElementById('classifyText').value.trim();
+    if (!text) {
+        alert('请输入要分类的文本');
+        return;
+    }
+    
+    fetch('/api/classify/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify({text: text})
+    })
+    .then(response => response.json())
+    .then(data => {
+        document.getElementById('classifyResult').style.display = 'block';
+        document.getElementById('resultContent').innerHTML = `
+            <div class="result-item">
+                <div class="category-label">分类结果: ${data.category_name}</div>
+                <div class="confidence">置信度: ${(data.confidence * 100).toFixed(2)}%</div>
+                <div class="all-probabilities">
+                    <h4>各类别概率:</h4>
+                    <ul>
+                        ${Object.entries(data.probabilities).map(([cat, prob]) => 
+                            `<li>${cat}: ${(prob * 100).toFixed(2)}%</li>`
+                        ).join('')}
+                    </ul>
+                </div>
+            </div>
+        `;
+    });
+}
+
+function autoClassifyAll() {
+    if (!confirm('确定要对所有未分类的文献进行自动分类吗？')) {
+        return;
+    }
+    
+    const btn = event.target;
+    btn.disabled = true;
+    btn.textContent = '分类中...';
+    
+    fetch('/api/auto-classify/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        document.getElementById('batchResult').innerHTML = `
+            <p>共处理 ${data.total} 条文献</p>
+            <div class="batch-list">
+                ${data.results.slice(0, 10).map(r => `
+                    <div class="batch-item">
+                        <span>${r.title}...</span>
+                        <span class="cat-tag">${r.category}</span>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+        btn.disabled = false;
+        btn.textContent = '开始批量分类';
+    });
+}
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+</script>
+{% endblock %}

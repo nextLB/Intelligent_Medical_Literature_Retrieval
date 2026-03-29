@@ -1,0 +1,167 @@
+{% extends 'literature/base.html' %}
+
+{% block title %}{{ literature.title|truncatechars:30 }} - 医学文献智能检索系统{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="literature-detail">
+        <div class="detail-header">
+            <h1>{{ literature.title }}</h1>
+            <div class="detail-meta">
+                {% if literature.category %}
+                <span class="tag">{{ literature.category.name }}</span>
+                {% endif %}
+                {% if literature.journal %}
+                <span>期刊: {{ literature.journal }}</span>
+                {% endif %}
+                {% if literature.publish_year %}
+                <span>发表年份: {{ literature.publish_year }}</span>
+                {% endif %}
+                {% if literature.doi %}
+                <span>DOI: {{ literature.doi }}</span>
+                {% endif %}
+            </div>
+        </div>
+        
+        {% if literature.authors %}
+        <div class="detail-section">
+            <h3>作者</h3>
+            <p>{{ literature.authors }}</p>
+        </div>
+        {% endif %}
+        
+        <div class="detail-section">
+            <h3>摘要</h3>
+            <p class="abstract">{{ literature.abstract|default:'暂无摘要' }}</p>
+        </div>
+        
+        {% if literature.keywords %}
+        <div class="detail-section">
+            <h3>关键词</h3>
+            <p>{{ literature.keywords }}</p>
+        </div>
+        {% endif %}
+        
+        <div class="detail-section">
+            <h3>文献信息</h3>
+            <table class="info-table">
+                <tr>
+                    <th>PMID</th>
+                    <td>{{ literature.pmid|default:'N/A' }}</td>
+                </tr>
+                <tr>
+                    <th>语言</th>
+                    <td>{{ literature.get_language_display|default:'中文' }}</td>
+                </tr>
+                <tr>
+                    <th>创建时间</th>
+                    <td>{{ literature.created_at|date:"Y-m-d H:i" }}</td>
+                </tr>
+            </table>
+        </div>
+        
+        <div class="detail-actions">
+            <button onclick="findSimilarLiterature()">查找相似文献</button>
+            <button onclick="generateAutoSummary()">生成摘要</button>
+            <button onclick="classifyText()">文本分类</button>
+        </div>
+        
+        {% if similar_literatures %}
+        <div class="detail-section">
+            <h3>相似文献推荐</h3>
+            <div class="similar-list">
+                {% for sim in similar_literatures %}
+                <div class="similar-item">
+                    <a href="/literature/{{ sim.similar.id }}/">{{ sim.similar.title }}</a>
+                    <span class="similarity">相似度: {{ sim.similarity_score|floatformat:4 }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+        
+        <div id="resultSection" class="detail-section" style="display:none;">
+            <h3>分析结果</h3>
+            <div id="resultContent"></div>
+        </div>
+    </div>
+    
+    <div class="back-link">
+        <a href="/literatures/{% if literature.category %}?category={{ literature.category.id }}{% endif %}">返回文献列表</a>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const literatureId = {{ literature.id }};
+
+function findSimilarLiterature() {
+    fetch('/api/similar/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify({literature_id: literatureId})
+    })
+    .then(response => response.json())
+    .then(data => {
+        showResult('相似文献', data.similar_literatures || []);
+    });
+}
+
+function generateAutoSummary() {
+    fetch('/api/summary/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify({literature_id: literatureId})
+    })
+    .then(response => response.json())
+    .then(data => {
+        showResult('自动摘要', data);
+    });
+}
+
+function classifyText() {
+    const text = "{{ literature.title|escapejs }} {{ literature.abstract|escapejs }}";
+    fetch('/api/classify/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify({text: text})
+    })
+    .then(response => response.json())
+    .then(data => {
+        showResult('文本分类', data);
+    });
+}
+
+function showResult(title, data) {
+    const section = document.getElementById('resultSection');
+    const content = document.getElementById('resultContent');
+    section.style.display = 'block';
+    content.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+}
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+</script>
+{% endblock %}

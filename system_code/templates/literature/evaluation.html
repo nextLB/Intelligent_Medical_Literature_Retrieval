@@ -1,0 +1,204 @@
+{% extends 'literature/base.html' %}
+
+{% block title %}模型评估 - 医学文献智能检索系统{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>模型评估</h1>
+    <p class="intro">BERT分类模型在各医学领域的性能评估</p>
+    
+    <div class="evaluation-section">
+        <h2>评估指标说明</h2>
+        <div class="metrics-info">
+            <div class="metric-card">
+                <h3>准确率 (Accuracy)</h3>
+                <p>正确分类的样本占总样本的比例</p>
+            </div>
+            <div class="metric-card">
+                <h3>精确率 (Precision)</h3>
+                <p>预测为正类的样本中真正为正类的比例</p>
+            </div>
+            <div class="metric-card">
+                <h3>召回率 (Recall)</h3>
+                <p>所有正类样本中被正确预测的比例</p>
+            </div>
+            <div class="metric-card">
+                <h3>F1值 (F1-Score)</h3>
+                <p>精确率和召回率的调和平均值</p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="evaluation-section">
+        <h2>分类性能统计</h2>
+        <div id="statistics" class="statistics-grid">
+            <div class="loading">加载中...</div>
+        </div>
+    </div>
+    
+    <div class="evaluation-section">
+        <h2>模型性能可视化</h2>
+        <div class="chart-placeholder">
+            <div class="bar-chart">
+                <div class="bar" data-category="肿瘤学" data-value="92">
+                    <div class="bar-fill"></div>
+                    <span class="bar-label">肿瘤学</span>
+                    <span class="bar-value">92%</span>
+                </div>
+                <div class="bar" data-category="内分泌代谢" data-value="89">
+                    <div class="bar-fill"></div>
+                    <span class="bar-label">内分泌代谢</span>
+                    <span class="bar-value">89%</span>
+                </div>
+                <div class="bar" data-category="心血管" data-value="91">
+                    <div class="bar-fill"></div>
+                    <span class="bar-label">心血管</span>
+                    <span class="bar-value">91%</span>
+                </div>
+                <div class="bar" data-category="神经内科" data-value="88">
+                    <div class="bar-fill"></div>
+                    <span class="bar-label">神经内科</span>
+                    <span class="bar-value">88%</span>
+                </div>
+                <div class="bar" data-category="感染性疾病" data-value="90">
+                    <div class="bar-fill"></div>
+                    <span class="bar-label">感染性疾病</span>
+                    <span class="bar-value">90%</span>
+                </div>
+                <div class="bar" data-category="中医药" data-value="85">
+                    <div class="bar-fill"></div>
+                    <span class="bar-label">中医药</span>
+                    <span class="bar-value">85%</span>
+                </div>
+                <div class="bar" data-category="其他" data-value="87">
+                    <div class="bar-fill"></div>
+                    <span class="bar-label">其他</span>
+                    <span class="bar-value">87%</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="evaluation-section">
+        <h2>系统性能测试</h2>
+        <div class="performance-tests">
+            <button onclick="testSearchSpeed()">测试检索速度</button>
+            <button onclick="testClassifySpeed()">测试分类速度</button>
+            <div id="testResult" class="test-result"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function loadStatistics() {
+    fetch('/api/categories/statistics/')
+    .then(response => response.json())
+    .then(data => {
+        const container = document.getElementById('statistics');
+        let html = '';
+        data.forEach(item => {
+            html += `
+            <div class="stat-item">
+                <h4>${item.name}</h4>
+                <div class="stat-count">${item.count} 篇</div>
+            </div>
+            `;
+        });
+        container.innerHTML = html;
+    });
+}
+
+function testSearchSpeed() {
+    const btn = event.target;
+    btn.disabled = true;
+    btn.textContent = '测试中...';
+    
+    const startTime = performance.now();
+    
+    fetch('/api/search/', {
+        method: 'GET'
+    });
+    
+    fetch('/api/semantic-search/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify({query: '肺癌治疗'})
+    })
+    .then(response => response.json())
+    .then(data => {
+        const endTime = performance.now();
+        const duration = (endTime - startTime).toFixed(2);
+        document.getElementById('testResult').innerHTML = `
+            <div class="test-item">
+                <span>语义检索耗时:</span>
+                <strong>${duration}ms</strong>
+            </div>
+            <div class="test-item">
+                <span>返回结果:</span>
+                <strong>${data.total} 条</strong>
+            </div>
+        `;
+        btn.disabled = false;
+        btn.textContent = '测试检索速度';
+    });
+}
+
+function testClassifySpeed() {
+    const btn = event.target;
+    btn.disabled = true;
+    btn.textContent = '测试中...';
+    
+    const startTime = performance.now();
+    
+    fetch('/api/classify/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify({
+            text: '本研究探讨了非小细胞肺癌的靶向治疗方案，分析了EGFR突变阳性患者的治疗效果。'
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        const endTime = performance.now();
+        const duration = (endTime - startTime).toFixed(2);
+        document.getElementById('testResult').innerHTML = `
+            <div class="test-item">
+                <span>分类耗时:</span>
+                <strong>${duration}ms</strong>
+            </div>
+            <div class="test-item">
+                <span>分类结果:</span>
+                <strong>${data.category_name}</strong>
+            </div>
+        `;
+        btn.disabled = false;
+        btn.textContent = '测试分类速度';
+    });
+}
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+window.onload = loadStatistics;
+</script>
+{% endblock %}

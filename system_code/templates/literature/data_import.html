@@ -1,0 +1,199 @@
+{% extends 'literature/base.html' %}
+
+{% block title %}数据导入 - 医学文献智能检索系统{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>数据导入</h1>
+    <p class="intro">导入医学文献数据到系统中</p>
+    
+    <div class="import-section">
+        <h2>单条文献导入</h2>
+        <form id="importForm" class="import-form">
+            <div class="form-group">
+                <label>PMID (可选)</label>
+                <input type="text" name="pmid" placeholder="PubMed ID">
+            </div>
+            <div class="form-group">
+                <label>标题 *</label>
+                <input type="text" name="title" required placeholder="文献标题">
+            </div>
+            <div class="form-group">
+                <label>摘要</label>
+                <textarea name="abstract" rows="4" placeholder="文献摘要"></textarea>
+            </div>
+            <div class="form-group">
+                <label>关键词</label>
+                <input type="text" name="keywords" placeholder="关键词，用逗号分隔">
+            </div>
+            <div class="form-group">
+                <label>作者</label>
+                <input type="text" name="authors" placeholder="作者列表">
+            </div>
+            <div class="form-group">
+                <label>期刊</label>
+                <input type="text" name="journal" placeholder="期刊名称">
+            </div>
+            <div class="form-group">
+                <label>发表年份</label>
+                <input type="number" name="publish_year" placeholder="如: 2024">
+            </div>
+            <div class="form-group">
+                <button type="submit">导入文献</button>
+            </div>
+        </form>
+        <div id="importResult" class="import-result"></div>
+    </div>
+    
+    <div class="import-section">
+        <h2>批量导入</h2>
+        <p>支持JSON格式批量导入文献数据</p>
+        <div class="batch-upload">
+            <textarea id="batchData" rows="10" placeholder='[
+    {
+        "title": "文献标题1",
+        "abstract": "摘要内容1",
+        "keywords": "关键词1, 关键词2"
+    },
+    {
+        "title": "文献标题2",
+        "abstract": "摘要内容2",
+        "keywords": "关键词3, 关键词4"
+    }
+]'></textarea>
+            <button onclick="batchImport()">批量导入</button>
+        </div>
+        <div id="batchResult" class="batch-result"></div>
+    </div>
+    
+    <div class="import-section">
+        <h2>数据格式说明</h2>
+        <div class="format-info">
+            <h3>单条导入字段:</h3>
+            <ul>
+                <li><strong>pmid</strong> - PubMed ID (可选)</li>
+                <li><strong>title</strong> - 文献标题 (必填)</li>
+                <li><strong>abstract</strong> - 摘要内容</li>
+                <li><strong>keywords</strong> - 关键词</li>
+                <li><strong>authors</strong> - 作者列表</li>
+                <li><strong>journal</strong> - 期刊名称</li>
+                <li><strong>publish_year</strong> - 发表年份</li>
+            </ul>
+            
+            <h3>批量导入格式:</h3>
+            <p>JSON数组格式，每项包含上述字段</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById('importForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(e.target);
+    const data = {
+        pmid: formData.get('pmid'),
+        title: formData.get('title'),
+        abstract: formData.get('abstract'),
+        keywords: formData.get('keywords'),
+        authors: formData.get('authors'),
+        journal: formData.get('journal'),
+        publish_year: formData.get('publish_year') ? parseInt(formData.get('publish_year')) : null
+    };
+    
+    fetch('/api/import/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify(data)
+    })
+    .then(response => response.json())
+    .then(data => {
+        const result = document.getElementById('importResult');
+        if (data.error) {
+            result.innerHTML = `<div class="error">${data.error}</div>`;
+        } else {
+            result.innerHTML = `
+                <div class="success">
+                    <p>导入成功！</p>
+                    <p>文献ID: ${data.id}</p>
+                    <p>自动分类: ${data.category}</p>
+                </div>
+            `;
+            e.target.reset();
+        }
+    });
+});
+
+function batchImport() {
+    const batchData = document.getElementById('batchData').value.trim();
+    if (!batchData) {
+        alert('请输入批量数据');
+        return;
+    }
+    
+    let items;
+    try {
+        items = JSON.parse(batchData);
+    } catch (e) {
+        alert('JSON格式错误: ' + e.message);
+        return;
+    }
+    
+    if (!Array.isArray(items)) {
+        alert('数据必须是JSON数组格式');
+        return;
+    }
+    
+    const result = document.getElementById('batchResult');
+    result.innerHTML = '<div class="loading">正在导入...</div>';
+    
+    let success = 0;
+    let fail = 0;
+    const total = items.length;
+    
+    Promise.all(items.map(item => {
+        return fetch('/api/import/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify(item)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.id) success++;
+            else fail++;
+        })
+        .catch(() => fail++);
+    }))
+    .then(() => {
+        result.innerHTML = `
+            <div class="batch-summary">
+                <p>导入完成: 成功 ${success} 条, 失败 ${fail} 条, 共 ${total} 条</p>
+            </div>
+        `;
+    });
+}
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+</script>
+{% endblock %}

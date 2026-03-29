@@ -1,0 +1,138 @@
+{% extends 'literature/base.html' %}
+
+{% block title %}首页 - 医学文献智能检索系统{% endblock %}
+
+{% block content %}
+<div class="hero">
+    <div class="container">
+        <h1>医学文献智能检索系统</h1>
+        <p class="subtitle">基于自然语言处理的智能医学文献检索与分析平台</p>
+        
+        <div class="search-box">
+            <input type="text" id="searchInput" placeholder="输入关键词或问题进行检索...">
+            <select id="searchType">
+                <option value="keyword">关键词检索</option>
+                <option value="semantic">语义检索</option>
+            </select>
+            <button onclick="performSearch()">检索</button>
+        </div>
+        
+        <div class="quick-links">
+            <span>热门分类：</span>
+            {% for cat in categories %}
+            <a href="/literatures/?category={{ cat.id }}" class="tag">{{ cat.name }}</a>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<div class="container">
+    <section class="features">
+        <h2>系统功能</h2>
+        <div class="feature-grid">
+            <div class="feature-card">
+                <div class="feature-icon">🔍</div>
+                <h3>关键词检索</h3>
+                <p>支持标题、摘要、关键词的精确匹配检索</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🧠</div>
+                <h3>语义检索</h3>
+                <p>基于BERT模型理解查询意图，返回语义相关结果</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">📊</div>
+                <h3>主题分类</h3>
+                <p>自动将文献分类到7大医学主题类别</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">📝</div>
+                <h3>自动摘要</h3>
+                <p>智能提取文献核心内容，生成简短摘要</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🔗</div>
+                <h3>相似文献</h3>
+                <p>基于向量相似度推荐相关文献</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">📈</div>
+                <h3>模型评估</h3>
+                <p>展示分类模型的准确率、召回率、F1值</p>
+            </div>
+        </div>
+    </section>
+
+    <section class="stats">
+        <h2>数据统计</h2>
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-number">{{ literature_count }}</div>
+                <div class="stat-label">文献总数</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">{{ categories.count }}</div>
+                <div class="stat-label">主题分类</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">7</div>
+                <div class="stat-label">支持类别</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">BERT</div>
+                <div class="stat-label">预训练模型</div>
+            </div>
+        </div>
+    </section>
+
+    <section class="recent">
+        <h2>最新文献</h2>
+        <div class="literature-list">
+            {% for lit in recent_literatures %}
+            <div class="literature-item">
+                <h3><a href="/literatures/?q={{ lit.title|urlencode }}">{{ lit.title }}</a></h3>
+                <div class="literature-meta">
+                    {% if lit.category %}<span class="tag">{{ lit.category }}</span>{% endif %}
+                    <span>{{ lit.journal }}</span>
+                    {% if lit.publish_year %}<span>{{ lit.publish_year }}年</span>{% endif %}
+                </div>
+                {% if lit.text %}
+                <p class="literature-abstract">{{ lit.text|truncatechars:150 }}</p>
+                {% endif %}
+            </div>
+            {% empty %}
+            <p class="empty-message">暂无文献数据，请先导入文献数据</p>
+            {% endfor %}
+        </div>
+        <div class="more-link">
+            <a href="/literatures/" class="btn">查看更多文献</a>
+        </div>
+    </section>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function performSearch() {
+    const query = document.getElementById('searchInput').value.trim();
+    const searchType = document.getElementById('searchType').value;
+    
+    if (!query) {
+        alert('请输入搜索内容');
+        return;
+    }
+    
+    if (searchType === 'keyword') {
+        window.location.href = `/search/?q=${encodeURIComponent(query)}&type=keyword`;
+    } else {
+        window.location.href = `/search/?q=${encodeURIComponent(query)}&type=semantic`;
+    }
+}
+
+document.getElementById('searchInput').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') {
+        performSearch();
+    }
+});
+</script>
+{% endblock %}

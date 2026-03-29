@@ -1,0 +1,396 @@
+{% extends 'literature/base.html' %}
+
+{% block title %}模型训练 - 医学文献智能检索系统{% endblock %}
+
+{% block extra_css %}
+<style>
+.terminal-output {
+    background: #1e1e1e;
+    color: #d4d4d4;
+    font-family: 'Courier New', Consolas, monospace;
+    font-size: 13px;
+    padding: 15px;
+    border-radius: 6px;
+    max-height: 400px;
+    overflow-y: auto;
+    margin: 15px 0;
+    line-height: 1.6;
+}
+.terminal-line {
+    margin: 2px 0;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+.terminal-line.info { color: #4fc3f7; }
+.terminal-line.log { color: #a0a0a0; }
+.terminal-line.error { color: #f44336; }
+.terminal-line.success { color: #4caf50; }
+.terminal-line.header { color: #ffd54f; font-weight: bold; }
+.progress-container {
+    margin: 20px 0;
+    padding: 20px;
+    background: #f5f5f5;
+    border-radius: 8px;
+}
+.progress-bar-container {
+    background: #e0e0e0;
+    border-radius: 10px;
+    height: 30px;
+    overflow: hidden;
+    position: relative;
+}
+.progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+    border-radius: 10px;
+    transition: width 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: bold;
+    font-size: 14px;
+}
+.progress-stats {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 10px;
+    font-size: 14px;
+    color: #666;
+}
+.epoch-info {
+    margin-top: 15px;
+    padding: 15px;
+    background: white;
+    border-radius: 8px;
+    border-left: 4px solid #667eea;
+}
+.epoch-info h4 {
+    margin: 0 0 10px 0;
+    color: #333;
+}
+.epoch-stats {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+}
+.stat-item {
+    padding: 8px;
+    background: #f8f9fa;
+    border-radius: 4px;
+}
+.stat-label {
+    font-size: 12px;
+    color: #888;
+}
+.stat-value {
+    font-size: 18px;
+    font-weight: bold;
+    color: #333;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>BERT模型训练</h1>
+    <p class="intro">基于预训练BERT模型微调，实现医学文献自动分类</p>
+    
+    <div class="training-section">
+        <h2>训练参数设置</h2>
+        <form id="trainingForm" class="training-form">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>训练轮数 (Epochs)</label>
+                    <input type="number" name="num_epochs" value="3" min="1" max="50">
+                </div>
+                <div class="form-group">
+                    <label>批次大小 (Batch Size)</label>
+                    <select name="batch_size">
+                        <option value="8">8</option>
+                        <option value="16" selected>16</option>
+                        <option value="32">32</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>学习率 (Learning Rate)</label>
+                    <select name="learning_rate">
+                        <option value="1e-5">1e-5</option>
+                        <option value="2e-5" selected>2e-5</option>
+                        <option value="5e-5">5e-5</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>最大序列长度</label>
+                    <select name="max_length">
+                        <option value="128">128</option>
+                        <option value="256" selected>256</option>
+                        <option value="512">512</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-group">
+                <button type="submit" id="trainBtn" class="btn-primary">开始训练</button>
+                <button type="button" id="stopBtn" class="btn-danger" style="display:none;">停止训练</button>
+            </div>
+        </form>
+        
+        <div id="progressContainer" class="progress-container" style="display:none;">
+            <h3>训练进度</h3>
+            <div class="progress-bar-container">
+                <div id="progressBar" class="progress-bar" style="width: 0%;">0%</div>
+            </div>
+            <div class="progress-stats">
+                <span id="epochInfo">Epoch 0/0</span>
+                <span id="stepInfo">Step 0/0</span>
+                <span id="lossInfo">Loss: --</span>
+                <span id="accInfo">Acc: --</span>
+            </div>
+        </div>
+        
+        <div id="terminalContainer" style="display:none;">
+            <h3>训练日志</h3>
+            <div id="terminalOutput" class="terminal-output"></div>
+            <button id="clearTerminal" class="btn-secondary">清空日志</button>
+        </div>
+        
+        <div id="trainingResult" class="training-result" style="display:none;">
+            <h3>训练结果</h3>
+            <div id="resultContent"></div>
+        </div>
+    </div>
+    
+    <div class="training-section">
+        <h2>训练数据说明</h2>
+        <div class="data-info">
+            <p>训练数据来源: <code>../Data_Preprocessing/bert_train_dataset.csv</code></p>
+            <p>模型输出路径: <code>./checkpoints/best_model.pt</code></p>
+            <h4>分类类别:</h4>
+            <ul class="category-list">
+                <li>肿瘤学 (0)</li>
+                <li>内分泌代谢 (1)</li>
+                <li>心血管 (2)</li>
+                <li>其他 (3)</li>
+                <li>感染性疾病 (4)</li>
+                <li>中医药 (5)</li>
+                <li>神经内科 (6)</li>
+            </ul>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentReader = null;
+
+function logToTerminal(message, type = 'log') {
+    const terminal = document.getElementById('terminalOutput');
+    const line = document.createElement('div');
+    line.className = `terminal-line ${type}`;
+    line.textContent = message;
+    terminal.appendChild(line);
+    terminal.scrollTop = terminal.scrollHeight;
+}
+
+function updateProgress(data) {
+    const progressBar = document.getElementById('progressBar');
+    const epochInfo = document.getElementById('epochInfo');
+    const stepInfo = document.getElementById('stepInfo');
+    const lossInfo = document.getElementById('lossInfo');
+    const accInfo = document.getElementById('accInfo');
+    
+    progressBar.style.width = `${data.progress}%`;
+    progressBar.textContent = `${data.progress.toFixed(1)}%`;
+    
+    epochInfo.textContent = `Epoch ${data.epoch}/${data.total_epochs}`;
+    stepInfo.textContent = `Step ${data.step}/${data.total_steps}`;
+    lossInfo.textContent = `Loss: ${data.loss}`;
+    accInfo.textContent = `Acc: ${(data.acc * 100).toFixed(2)}%`;
+}
+
+function showTraining() {
+    document.getElementById('progressContainer').style.display = 'block';
+    document.getElementById('terminalContainer').style.display = 'block';
+    document.getElementById('trainingResult').style.display = 'none';
+    document.getElementById('trainBtn').style.display = 'none';
+    document.getElementById('stopBtn').style.display = 'inline-block';
+    document.getElementById('terminalOutput').innerHTML = '';
+    document.getElementById('progressBar').style.width = '0%';
+    document.getElementById('progressBar').textContent = '0%';
+}
+
+function hideTraining() {
+    document.getElementById('trainBtn').style.display = 'inline-block';
+    document.getElementById('trainBtn').disabled = false;
+    document.getElementById('trainBtn').textContent = '开始训练';
+    document.getElementById('stopBtn').style.display = 'none';
+    currentReader = null;
+}
+
+function showResult(data) {
+    document.getElementById('progressContainer').style.display = 'none';
+    document.getElementById('trainingResult').style.display = 'block';
+    
+    if (data.error) {
+        document.getElementById('resultContent').innerHTML = `<div class="error">训练失败: ${data.error}</div>`;
+    } else {
+        document.getElementById('resultContent').innerHTML = `
+            <div class="success">
+                <p><strong>训练完成!</strong></p>
+                <p>最佳验证准确率: ${(data.best_val_acc * 100).toFixed(2)}%</p>
+                <p>训练样本数: ${data.train_samples}</p>
+                <p>验证样本数: ${data.val_samples}</p>
+                <p>运行设备: ${data.device}</p>
+            </div>
+            <div class="history-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Epoch</th>
+                            <th>训练损失</th>
+                            <th>训练准确率</th>
+                            <th>验证损失</th>
+                            <th>验证准确率</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${data.history.epochs.map((epoch, i) => `
+                            <tr>
+                                <td>${epoch}</td>
+                                <td>${data.history.train_loss[i]}</td>
+                                <td>${(data.history.train_acc[i] * 100).toFixed(2)}%</td>
+                                <td>${data.history.val_loss[i]}</td>
+                                <td>${(data.history.val_acc[i] * 100).toFixed(2)}%</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+}
+
+document.getElementById('trainingForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(e.target);
+    const data = {
+        num_epochs: parseInt(formData.get('num_epochs')),
+        batch_size: parseInt(formData.get('batch_size')),
+        learning_rate: parseFloat(formData.get('learning_rate')),
+        max_length: parseInt(formData.get('max_length'))
+    };
+    
+    const trainBtn = document.getElementById('trainBtn');
+    trainBtn.disabled = true;
+    trainBtn.textContent = '连接中...';
+    
+    showTraining();
+    isTraining = true;
+    
+    fetch('/api/train-stream/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify(data)
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error('训练请求失败');
+        }
+        
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        
+        function readStream() {
+            reader.read().then(({ done, value }) => {
+                if (done) {
+                    return;
+                }
+                
+                const chunk = decoder.decode(value);
+                const lines = chunk.split('\n');
+                
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        try {
+                            const msg = JSON.parse(line.substring(6));
+                            
+                            switch (msg.type) {
+                                case 'log':
+                                    logToTerminal(msg.data);
+                                    break;
+                                case 'info':
+                                    logToTerminal(msg.data, 'info');
+                                    break;
+                                case 'error':
+                                    logToTerminal(msg.data, 'error');
+                                    break;
+                                case 'success':
+                                    logToTerminal(msg.data, 'success');
+                                    break;
+                                case 'header':
+                                    logToTerminal(msg.data, 'header');
+                                    break;
+                                case 'progress':
+                                    updateProgress(msg.data);
+                                    break;
+                                case 'complete':
+                                    showResult(msg.data);
+                                    hideTraining();
+                                    break;
+                            }
+                        } catch (e) {
+                            console.error('解析消息失败:', e);
+                        }
+                    }
+                }
+                
+                readStream();
+            });
+        }
+        
+        trainBtn.textContent = '训练中...';
+        showTraining();
+        
+        readStream();
+    })
+    .catch(error => {
+        logToTerminal(`请求失败: ${error.message}`, 'error');
+        hideTraining();
+    });
+});
+
+document.getElementById('stopBtn').addEventListener('click', function() {
+    if (currentReader) {
+        currentReader.cancel();
+    }
+    logToTerminal('训练已停止', 'error');
+    hideTraining();
+});
+
+document.getElementById('clearTerminal').addEventListener('click', function() {
+    document.getElementById('terminalOutput').innerHTML = '';
+});
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+</script>
+{% endblock %}
