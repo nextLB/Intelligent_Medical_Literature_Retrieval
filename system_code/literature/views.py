@@ -3,6 +3,7 @@ import os
 os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 
 import json
+import re
 import jieba
 from django.db.models import Q
 from django.shortcuts import render
@@ -36,6 +37,57 @@ LABEL_MAPPING_REVERSE = {
 }
 
 
+def keyword_search_tokens(query):
+    """从用户输入拆出可用于匹配的关键词（整串 + jieba），避免前缀误输入导致零命中。"""
+    q = (query or '').strip()
+    if not q:
+        return []
+    tokens = []
+    if len(q) >= 2:
+        tokens.append(q)
+    for w in jieba.cut_for_search(q):
+        w = w.strip()
+        if len(w) >= 2:
+            tokens.append(w)
+    seen = set()
+    out = []
+    for t in tokens:
+        if t not in seen:
+            seen.add(t)
+            out.append(t)
+    return out
+
+
+def literature_q_for_keyword_tokens(tokens):
+    if not tokens:
+        return Q(pk__in=[])
+    combined = Q()
+    for t in tokens:
+        combined |= Q(title__icontains=t) | Q(abstract__icontains=t) | Q(keywords__icontains=t)
+    return combined
+
+
+def search_literature_db(query, limit=500):
+    """在数据库 Literature 中做关键词检索（标题/摘要/关键词，OR 匹配分词结果）。"""
+    tokens = keyword_search_tokens(query)
+    if not tokens:
+        return []
+    qs = Literature.objects.filter(literature_q_for_keyword_tokens(tokens)).order_by('-updated_at')[:limit]
+    results = []
+    for lit in qs:
+        results.append({
+            'id': lit.id,
+            'title': lit.title,
+            'abstract': lit.abstract or '',
+            'keywords': lit.keywords or '',
+            'journal': lit.journal or '',
+            'publish_year': lit.publish_year,
+            'category': lit.category.name if lit.category else '',
+            'source': 'db',
+        })
+    return results
+
+
 def get_csv_path():
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     csv_path = os.path.join(base_dir, '..', 'Data_Preprocessing', 'bert_train_dataset.csv')
@@ -50,25 +102,34 @@ def search_from_csv(query, top_k=100):
     
     try:
         df = pd.read_csv(csv_path, encoding='utf-8-sig')
-        
-        mask = df['text'].str.contains(query, case=False, na=False)
+        tokens = keyword_search_tokens(query)
+        if not tokens:
+            return []
+        mask = pd.Series(False, index=df.index)
+        for t in tokens:
+            pat = re.escape(t)
+            mask = mask | df['text'].astype(str).str.contains(pat, case=False, na=False, regex=True)
         results_df = df[mask].head(top_k)
         
         results = []
         for _, row in results_df.iterrows():
             text = str(row.get('text', ''))
             label_id = int(row.get('label_id', 3))
+            title_preview = text[:200] if len(text) > 200 else text
+            lit = Literature.objects.filter(title=title_preview).first()
+            pk = lit.id if lit else None
             
             results.append({
-                'id': row.name,
-                'title': text[:200] if len(text) > 200 else text,
-                'abstract': text[200:500] + '...' if len(text) > 200 else '',
+                'id': pk,
+                'title': title_preview,
+                'abstract': (text[200:500] + '...') if len(text) > 200 else '',
                 'text': text,
                 'keywords': '',
                 'journal': '',
                 'publish_year': None,
                 'category': LABEL_MAPPING_REVERSE.get(label_id, '其他'),
-                'label_id': label_id
+                'label_id': label_id,
+                'source': 'csv',
             })
         
         return results
@@ -85,6 +146,9 @@ def semantic_search_from_csv(query, top_k=20):
     
     try:
         df = pd.read_csv(csv_path, encoding='utf-8-sig')
+        query_tokens = set(keyword_search_tokens(query))
+        if not query_tokens and len((query or '').strip()) >= 2:
+            query_tokens = {(query or '').strip()}
         
         results = []
         for idx, row in df.iterrows():
@@ -95,20 +159,27 @@ def semantic_search_from_csv(query, top_k=20):
             label_id = int(row.get('label_id', 3))
             
             similarity = 0.0
-            query_lower = query.lower()
+            query_lower = (query or '').lower()
             text_lower = text.lower()
             
-            if query_lower in text_lower:
-                similarity = 0.5 + 0.5 * (len(query_lower) / len(text_lower))
+            if query_lower and query_lower in text_lower:
+                similarity = 0.5 + 0.5 * (len(query_lower) / max(len(text_lower), 1))
             
-            words = query.split()
-            for word in words:
+            doc_tokens = {w.strip() for w in jieba.cut_for_search(text) if len(w.strip()) >= 2}
+            overlap = len(query_tokens & doc_tokens)
+            similarity += 0.12 * overlap
+            
+            for word in (query or '').split():
                 if len(word) >= 2 and word.lower() in text_lower:
                     similarity += 0.1
             
+            title_preview = text[:200] if len(text) > 200 else text
+            lit = Literature.objects.filter(title=title_preview).first()
+            row_id = lit.id if lit else None
+            
             results.append({
-                'id': idx,
-                'title': text[:200] if len(text) > 200 else text,
+                'id': row_id,
+                'title': title_preview,
                 'abstract': text[200:500] + '...' if len(text) > 200 else '',
                 'text': text,
                 'keywords': '',
@@ -116,11 +187,13 @@ def semantic_search_from_csv(query, top_k=20):
                 'publish_year': None,
                 'category': LABEL_MAPPING_REVERSE.get(label_id, '其他'),
                 'label_id': label_id,
-                'similarity': round(similarity, 4)
+                'similarity': round(similarity, 4),
+                'source': 'csv',
             })
         
         results.sort(key=lambda x: x['similarity'], reverse=True)
-        return results[:top_k]
+        results = [r for r in results if r['similarity'] > 0][:top_k]
+        return results
     except Exception as e:
         print(f"语义检索错误: {e}")
         return []
@@ -281,9 +354,33 @@ def keyword_search(request):
     
     print(f"\n执行关键词检索: '{query}'")
     
-    results = search_from_csv(query)
+    db_results = search_literature_db(query)
+    csv_results = search_from_csv(query)
+    seen_ids = set()
+    merged = []
+    for r in db_results:
+        rid = r.get('id')
+        if rid is not None and rid not in seen_ids:
+            seen_ids.add(rid)
+            merged.append(r)
+    titles_in_merged = {m['title'] for m in merged}
+    for r in csv_results:
+        rid = r.get('id')
+        if rid is not None:
+            if rid in seen_ids:
+                continue
+            seen_ids.add(rid)
+            merged.append(r)
+        else:
+            if r['title'] in titles_in_merged:
+                continue
+            titles_in_merged.add(r['title'])
+            merged.append(r)
     
+    results = merged
     paginator_page_size = 20
+    total = len(results)
+    total_pages = (total + paginator_page_size - 1) // paginator_page_size if total else 0
     start_idx = (page - 1) * paginator_page_size
     end_idx = start_idx + paginator_page_size
     page_results = results[start_idx:end_idx]
@@ -292,7 +389,7 @@ def keyword_search(request):
         SearchHistory.objects.create(
             query=query,
             search_type='keyword',
-            results_count=len(results),
+            results_count=total,
             ip_address=request.META.get('REMOTE_ADDR')
         )
     except Exception as e:
@@ -301,32 +398,11 @@ def keyword_search(request):
     return JsonResponse({
         'query': query,
         'search_type': 'keyword',
-        'total': len(results),
+        'total': total,
         'page': page,
-        'total_pages': (len(results) + paginator_page_size - 1) // paginator_page_size,
+        'total_pages': total_pages,
         'results': page_results
     })
-    
-    paginator = Paginator(literatures, 20)
-    page_obj = paginator.get_page(page)
-    
-    SearchHistory.objects.create(
-        query=query,
-        search_type=search_type,
-        results_count=paginator.count,
-        ip_address=request.META.get('REMOTE_ADDR')
-    )
-    
-    data = {
-        'query': query,
-        'search_type': search_type,
-        'total': paginator.count,
-        'page': page,
-        'total_pages': paginator.num_pages,
-        'results': LiteratureListSerializer(page_obj, many=True).data
-    }
-    
-    return JsonResponse(data)
 
 
 @require_http_methods(["POST"])

@@ -98,8 +98,51 @@ function search() {
     });
 }
 
+function escapeHtml(s) {
+    if (s == null || s === '') return '';
+    const div = document.createElement('div');
+    div.textContent = s;
+    return div.innerHTML;
+}
+
+function generateSummaryFromCachedIndex(idx) {
+    const list = window.__searchResultsCache;
+    const lit = list && list[idx];
+    if (!lit) {
+        alert('结果已过期，请重新检索');
+        return;
+    }
+    const text = lit.text || lit.abstract || '';
+    generateSummaryFromText(text);
+}
+
+function generateSummaryFromText(text) {
+    if (!text || !String(text).trim()) {
+        alert('暂无文本可摘要');
+        return;
+    }
+    fetch('/api/summary/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify({ text: String(text) })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.summary) {
+            const kw = (data.keywords && data.keywords.join) ? data.keywords.join(', ') : '';
+            alert('摘要:\\n' + data.summary + (kw ? ('\\n\\n关键词:\\n' + kw) : ''));
+        } else if (data.error) {
+            alert(data.error);
+        }
+    });
+}
+
 function displayResults(results) {
     const resultsList = document.getElementById('resultsList');
+    window.__searchResultsCache = results;
     
     if (!results || results.length === 0) {
         resultsList.innerHTML = '<div class="empty-message">未找到相关文献</div>';
@@ -107,22 +150,31 @@ function displayResults(results) {
     }
     
     let html = '';
-    results.forEach(lit => {
+    results.forEach((lit, idx) => {
+        const lid = lit.id;
+        const titleHtml = (lid != null && lid !== '')
+            ? `<a href="/literature/${lid}/">${escapeHtml(lit.title)}</a>`
+            : `<span class="title-no-detail">${escapeHtml(lit.title)}</span><span class="hint-inline">（仅数据集条目，未入库则无详情页）</span>`;
+        const actionsHtml = (lid != null && lid !== '')
+            ? `<div class="result-actions">
+                <button type="button" onclick="findSimilar(${lid})">查找相似文献</button>
+                <button type="button" onclick="generateSummary(${lid})">生成摘要</button>
+               </div>`
+            : `<div class="result-actions">
+                <button type="button" onclick="generateSummaryFromCachedIndex(${idx})">生成摘要</button>
+               </div>`;
         html += `
         <div class="result-item">
-            <h3><a href="/literature/${lit.id}/">${lit.title}</a></h3>
+            <h3>${titleHtml}</h3>
             <div class="result-meta">
-                ${lit.category ? `<span class="tag">${lit.category}</span>` : ''}
-                ${lit.journal ? `<span>期刊: ${lit.journal}</span>` : ''}
+                ${lit.category ? `<span class="tag">${escapeHtml(lit.category)}</span>` : ''}
+                ${lit.journal ? `<span>期刊: ${escapeHtml(lit.journal)}</span>` : ''}
                 ${lit.publish_year ? `<span>年份: ${lit.publish_year}</span>` : ''}
                 ${lit.similarity ? `<span class="similarity">相似度: ${lit.similarity}</span>` : ''}
             </div>
-            <p class="result-abstract">${lit.abstract || '暂无摘要'}</p>
-            ${lit.keywords ? `<div class="result-keywords">关键词: ${lit.keywords}</div>` : ''}
-            <div class="result-actions">
-                <button onclick="findSimilar(${lit.id})">查找相似文献</button>
-                <button onclick="generateSummary(${lit.id})">生成摘要</button>
-            </div>
+            <p class="result-abstract">${escapeHtml(lit.abstract || '暂无摘要')}</p>
+            ${lit.keywords ? `<div class="result-keywords">关键词: ${escapeHtml(lit.keywords)}</div>` : ''}
+            ${actionsHtml}
         </div>
         `;
     });
@@ -193,7 +245,10 @@ function generateSummary(literatureId) {
     .then(response => response.json())
     .then(data => {
         if (data.summary) {
-            alert('摘要:\\n' + data.summary + '\\n\\n关键词:\\n' + data.keywords.join(', '));
+            const kw = (data.keywords && data.keywords.join) ? data.keywords.join(', ') : '';
+            alert('摘要:\\n' + data.summary + (kw ? ('\\n\\n关键词:\\n' + kw) : ''));
+        } else if (data.error) {
+            alert(data.error);
         }
     });
 }
