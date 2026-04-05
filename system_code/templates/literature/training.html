@@ -167,15 +167,23 @@
         <div class="data-info">
             <p>训练数据来源: <code>../Data_Preprocessing/bert_train_dataset.csv</code></p>
             <p>模型输出路径: <code>./checkpoints/best_model.pt</code></p>
-            <h4>分类类别:</h4>
+            <h4>分类类别 (15类):</h4>
             <ul class="category-list">
                 <li>肿瘤学 (0)</li>
                 <li>内分泌代谢 (1)</li>
                 <li>心血管 (2)</li>
-                <li>其他 (3)</li>
+                <li>神经内科 (3)</li>
                 <li>感染性疾病 (4)</li>
                 <li>中医药 (5)</li>
-                <li>神经内科 (6)</li>
+                <li>呼吸系统 (6)</li>
+                <li>消化系统 (7)</li>
+                <li>泌尿肾脏 (8)</li>
+                <li>儿科 (9)</li>
+                <li>医疗AI/技术 (10)</li>
+                <li>公共卫生 (11)</li>
+                <li>风湿免疫 (12)</li>
+                <li>精神心理 (13)</li>
+                <li>其他 (14)</li>
             </ul>
         </div>
     </div>
@@ -185,6 +193,7 @@
 {% block extra_js %}
 <script>
 let currentReader = null;
+let stopRequested = false;
 
 function logToTerminal(message, type = 'log') {
     const terminal = document.getElementById('terminalOutput');
@@ -275,6 +284,7 @@ function showResult(data) {
 
 document.getElementById('trainingForm').addEventListener('submit', function(e) {
     e.preventDefault();
+    stopRequested = false;
     
     const formData = new FormData(e.target);
     const data = {
@@ -308,6 +318,13 @@ document.getElementById('trainingForm').addEventListener('submit', function(e) {
         const decoder = new TextDecoder();
         
         function readStream() {
+            if (stopRequested) {
+                reader.cancel();
+                logToTerminal('训练已被用户停止', 'error');
+                hideTraining();
+                return;
+            }
+            
             reader.read().then(({ done, value }) => {
                 if (done) {
                     return;
@@ -341,7 +358,11 @@ document.getElementById('trainingForm').addEventListener('submit', function(e) {
                                     updateProgress(msg.data);
                                     break;
                                 case 'complete':
-                                    showResult(msg.data);
+                                    if (msg.data && msg.data.stopped) {
+                                        logToTerminal('训练已停止', 'error');
+                                    } else {
+                                        showResult(msg.data);
+                                    }
                                     hideTraining();
                                     break;
                             }
@@ -367,11 +388,28 @@ document.getElementById('trainingForm').addEventListener('submit', function(e) {
 });
 
 document.getElementById('stopBtn').addEventListener('click', function() {
-    if (currentReader) {
-        currentReader.cancel();
-    }
-    logToTerminal('训练已停止', 'error');
-    hideTraining();
+    stopRequested = true;
+    logToTerminal('正在停止训练...', 'error');
+    
+    // 发送停止请求到服务器
+    fetch('/api/train-stop/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            logToTerminal('已发送停止信号，请等待当前epoch结束', 'info');
+        } else {
+            logToTerminal(data.message || '停止信号已发送', 'info');
+        }
+    })
+    .catch(error => {
+        logToTerminal('停止请求失败: ' + error.message, 'error');
+    });
 });
 
 document.getElementById('clearTerminal').addEventListener('click', function() {

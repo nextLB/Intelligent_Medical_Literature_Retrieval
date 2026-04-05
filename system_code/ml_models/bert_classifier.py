@@ -7,7 +7,7 @@ from transformers import BertModel, BertTokenizer
 
 
 class BertClassifier:
-    def __init__(self, model_path='bert-base-chinese', num_classes=7, dropout=0.3):
+    def __init__(self, model_path='bert-base-chinese', num_classes=15, dropout=0.3):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.num_classes = num_classes
         self.max_length = 256
@@ -21,10 +21,18 @@ class BertClassifier:
             0: '肿瘤学',
             1: '内分泌代谢',
             2: '心血管',
-            3: '其他',
+            3: '神经内科',
             4: '感染性疾病',
             5: '中医药',
-            6: '神经内科'
+            6: '呼吸系统',
+            7: '消化系统',
+            8: '泌尿肾脏',
+            9: '儿科',
+            10: '医疗AI/技术',
+            11: '公共卫生',
+            12: '风湿免疫',
+            13: '精神心理',
+            14: '其他'
         }
     
     def predict(self, text):

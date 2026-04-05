@@ -32,8 +32,10 @@ import os
 
 
 LABEL_MAPPING_REVERSE = {
-    0: '肿瘤学', 1: '内分泌代谢', 2: '心血管', 3: '其他',
-    4: '感染性疾病', 5: '中医药', 6: '神经内科'
+    0: '肿瘤学', 1: '内分泌代谢', 2: '心血管', 3: '神经内科',
+    4: '感染性疾病', 5: '中医药', 6: '呼吸系统', 7: '消化系统',
+    8: '泌尿肾脏', 9: '儿科', 10: '医疗AI/技术', 11: '公共卫生',
+    12: '风湿免疫', 13: '精神心理', 14: '其他'
 }
 
 
@@ -692,8 +694,10 @@ def train_model(request):
     sys.path.insert(0, BASE_DIR)
     
     LABEL_MAPPING_REVERSE = {
-        0: '肿瘤学', 1: '内分泌代谢', 2: '心血管', 3: '其他',
-        4: '感染性疾病', 5: '中医药', 6: '神经内科'
+        0: '肿瘤学', 1: '内分泌代谢', 2: '心血管', 3: '神经内科',
+        4: '感染性疾病', 5: '中医药', 6: '呼吸系统', 7: '消化系统',
+        8: '泌尿肾脏', 9: '儿科', 10: '医疗AI/技术', 11: '公共卫生',
+        12: '风湿免疫', 13: '精神心理', 14: '其他'
     }
     
     try:
@@ -784,7 +788,7 @@ def train_model(request):
         val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
         
         class BertClassifier(nn.Module):
-            def __init__(self, num_classes=7, dropout=0.3):
+            def __init__(self, num_classes=15, dropout=0.3):
                 super(BertClassifier, self).__init__()
                 self.bert = BertModel.from_pretrained('bert-base-chinese')
                 self.dropout = nn.Dropout(dropout)
@@ -797,7 +801,7 @@ def train_model(request):
                 return self.classifier(pooled_output)
         
         print("\n初始化模型...")
-        model = BertClassifier(num_classes=7, dropout=0.3)
+        model = BertClassifier(num_classes=15, dropout=0.3)
         model = model.to(device)
         
         total_params = sum(p.numel() for p in model.parameters())
@@ -953,8 +957,10 @@ def train_model_stream(request):
     sys.path.insert(0, BASE_DIR)
     
     LABEL_MAP = {
-        0: '肿瘤学', 1: '内分泌代谢', 2: '心血管', 3: '其他',
-        4: '感染性疾病', 5: '中医药', 6: '神经内科'
+        0: '肿瘤学', 1: '内分泌代谢', 2: '心血管', 3: '神经内科',
+        4: '感染性疾病', 5: '中医药', 6: '呼吸系统', 7: '消化系统',
+        8: '泌尿肾脏', 9: '儿科', 10: '医疗AI/技术', 11: '公共卫生',
+        12: '风湿免疫', 13: '精神心理', 14: '其他'
     }
     
     try:
@@ -972,7 +978,26 @@ def train_model_stream(request):
     def send_event(event_type, event_data):
         return "data: " + json.dumps({'type': event_type, 'data': event_data}) + "\n\n"
     
-    def generate():
+    # 检查是否已有训练在进行，使用文件锁防止并发训练
+    lock_file = os.path.join(BASE_DIR, 'checkpoints', 'training.lock')
+    training_stop_flag = os.path.join(BASE_DIR, 'checkpoints', 'training_stop.flag')
+    
+    if os.path.exists(lock_file):
+        yield send_event('error', '已有训练任务正在进行，请等待完成或重启服务')
+        yield send_event('complete', {'error': '训练任务冲突'})
+        return
+    
+    # 创建锁文件
+    os.makedirs(os.path.dirname(lock_file), exist_ok=True)
+    with open(lock_file, 'w') as f:
+        f.write(str(os.getpid()))
+    
+    # 删除停止标志文件（如果存在）
+    if os.path.exists(training_stop_flag):
+        os.remove(training_stop_flag)
+    
+    try:
+        def generate():
         yield send_event('log', '=' * 60)
         yield send_event('log', '开始BERT模型训练')
         yield send_event('log', '=' * 60)
@@ -1055,7 +1080,7 @@ def train_model_stream(request):
             val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
             
             class BertClassifier(nn.Module):
-                def __init__(self, num_classes=7, dropout=0.3):
+                def __init__(self, num_classes=15, dropout=0.3):
                     super(BertClassifier, self).__init__()
                     self.bert = BertModel.from_pretrained('bert-base-chinese', local_files_only=True)
                     self.dropout = nn.Dropout(dropout)
@@ -1068,7 +1093,7 @@ def train_model_stream(request):
                     return self.classifier(pooled_output)
             
             yield send_event('log', '初始化模型...')
-            model = BertClassifier(num_classes=7, dropout=0.3)
+            model = BertClassifier(num_classes=15, dropout=0.3)
             model = model.to(device)
             
             total_params = sum(p.numel() for p in model.parameters())
@@ -1184,25 +1209,65 @@ def train_model_stream(request):
                         }
                     }, os.path.join(checkpoint_dir, 'best_model.pt'))
                     yield send_event('log', '*** 保存最佳模型, Val Acc=%.4f ***' % val_acc)
+                
+                # 检查停止标志
+                if os.path.exists(training_stop_flag):
+                    os.remove(training_stop_flag)
+                    yield send_event('log', '训练已被用户停止')
+                    yield send_event('complete', {'error': '训练已停止', 'stopped': True})
+                    break
+            else:
+                # 如果循环正常完成（没有break）
+                yield send_event('log', '=' * 60)
+                yield send_event('log', '训练完成! 最佳验证准确率: %.4f' % best_val_acc)
+                yield send_event('log', '=' * 60)
+                
+                yield send_event('complete', {
+                    'best_val_acc': round(best_val_acc, 4),
+                    'history': training_history,
+                    'train_samples': len(train_texts),
+                    'val_samples': len(val_texts),
+                    'device': str(device)
+                })
             
-            yield send_event('log', '=' * 60)
-            yield send_event('log', '训练完成! 最佳验证准确率: %.4f' % best_val_acc)
-            yield send_event('log', '=' * 60)
+            # 训练结束，删除锁文件
+            if os.path.exists(lock_file):
+                os.remove(lock_file)
             
-            yield send_event('complete', {
-                'best_val_acc': round(best_val_acc, 4),
-                'history': training_history,
-                'train_samples': len(train_texts),
-                'val_samples': len(val_texts),
-                'device': str(device)
-            })
+            return
             
         except Exception as e:
             import traceback
             yield send_event('error', '训练出错: ' + str(e))
             yield send_event('error', traceback.format_exc())
+        finally:
+            # 确保锁文件被删除
+            if os.path.exists(lock_file):
+                os.remove(lock_file)
     
     response = StreamingHttpResponse(generate(), content_type='text/event-stream')
     response['Cache-Control'] = 'no-cache'
     response['X-Accel-Buffering'] = 'no'
     return response
+
+
+@require_http_methods(["POST"])
+def stop_training(request):
+    """停止训练"""
+    import os
+    
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    lock_file = os.path.join(BASE_DIR, 'checkpoints', 'training.lock')
+    stop_flag = os.path.join(BASE_DIR, 'checkpoints', 'training_stop.flag')
+    
+    try:
+        # 如果锁文件存在，说明训练正在进行
+        if os.path.exists(lock_file):
+            # 创建停止标志文件
+            with open(stop_flag, 'w') as f:
+                f.write(str(time.time()))
+            return JsonResponse({'status': 'success', 'message': '已发送停止信号'})
+        else:
+            return JsonResponse({'status': 'info', 'message': '没有正在进行的训练'})
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)

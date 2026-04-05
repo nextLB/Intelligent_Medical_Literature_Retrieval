@@ -22,5 +22,6 @@ urlpatterns = [
     path('training/', views.training_page, name='training_page'),
     path('api/train/', views.train_model, name='train_model'),
     path('api/train-stream/', views.train_model_stream, name='train_stream'),
+    path('api/train-stop/', views.stop_training, name='train_stop'),
     path('api/training-history/', views.get_training_history, name='training_history'),
 ]
