@@ -9,7 +9,7 @@
             <h1>{{ literature.title }}</h1>
             <div class="detail-meta">
                 {% if literature.category %}
-                <span class="tag">{{ literature.category.name }}</span>
+                <span class="tag">{{ literature.category|default:literature.category }}</span>
                 {% endif %}
                 {% if literature.journal %}
                 <span>期刊: {{ literature.journal }}</span>
@@ -59,6 +59,27 @@
                 </tr>
             </table>
         </div>
+
+        {% if show_pdf %}
+        <div class="detail-section">
+            <h3>原文全文</h3>
+            <div class="pdf-viewer">
+                <iframe src="{{ pdf_url }}" width="100%" height="600px" style="border: 1px solid #ccc;"></iframe>
+            </div>
+        </div>
+        
+        <div class="detail-section">
+            <h3>下载原文</h3>
+            <a href="{{ pdf_url }}" download class="download-btn">下载 PDF 全文</a>
+        </div>
+        {% endif %}
+
+        {% if literature.full_text %}
+        <div class="detail-section">
+            <h3>全文内容</h3>
+            <div class="full-text">{{ literature.full_text }}</div>
+        </div>
+        {% endif %}
         
         <div class="detail-actions">
             <button onclick="findSimilarLiterature()">查找相似文献</button>
@@ -87,7 +108,7 @@
     </div>
     
     <div class="back-link">
-        <a href="/literatures/{% if literature.category %}?category={{ literature.category.id }}{% endif %}">返回文献列表</a>
+        <a href="/literatures/">返回文献列表</a>
     </div>
 </div>
 {% endblock %}
@@ -122,7 +143,9 @@ function generateAutoSummary() {
     })
     .then(response => response.json())
     .then(data => {
-        showResult('自动摘要', data);
+        translateResult(data).then(translatedData => {
+            showResult('自动摘要', translatedData);
+        });
     });
 }
 
@@ -146,7 +169,65 @@ function showResult(title, data) {
     const section = document.getElementById('resultSection');
     const content = document.getElementById('resultContent');
     section.style.display = 'block';
-    content.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+    
+    let displayData = data;
+    
+    if (title === '自动摘要' && data.summary) {
+        displayData = {
+            '摘要': data.summary,
+            '关键词': data.keywords ? data.keywords.join(', ') : ''
+        };
+    } else if (title === '相似文献' && Array.isArray(data)) {
+        displayData = data.map(item => ({
+            '标题': item.title,
+            '期刊': item.journal,
+            '相似度': item.similarity
+        }));
+    }
+    
+    let html = '<table class="result-table">';
+    if (Array.isArray(displayData)) {
+        displayData.forEach(item => {
+            html += '<tr><td>' + JSON.stringify(item, null, 2).replace(/"/g, '').replace(/:/g, ': ').replace(/,/g, ', ') + '</td></tr>';
+        });
+    } else {
+        for (const [key, value] of Object.entries(displayData)) {
+            html += '<tr><th>' + key + '</th><td>' + value + '</td></tr>';
+        }
+    }
+    html += '</table>';
+    content.innerHTML = html;
+}
+
+async function translateText(text, targetLang = 'zh-CN') {
+    return new Promise((resolve) => {
+        const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=en|zh-CN`;
+        
+        fetch(url)
+            .then(response => response.json())
+            .then(data => {
+                if (data && data.responseData && data.responseData.translatedText) {
+                    resolve(data.responseData.translatedText);
+                } else {
+                    resolve(text);
+                }
+            })
+            .catch(error => {
+                console.error('Translation error:', error);
+                resolve(text);
+            });
+    });
+}
+
+async function translateResult(data) {
+    if (data.summary) {
+        const translatedSummary = await translateText(data.summary);
+        data.summary = translatedSummary;
+        if (data.keywords && data.keywords.length > 0) {
+            data.keywords = data.keywords.slice(0, 5);
+        }
+    }
+    return data;
 }
 
 function getCookie(name) {

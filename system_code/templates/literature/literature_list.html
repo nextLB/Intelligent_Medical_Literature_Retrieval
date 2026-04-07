@@ -25,7 +25,7 @@
     <div class="literature-list-page">
         {% for lit in literatures %}
         <div class="literature-card">
-            <h3><a href="/literatures/?q={{ lit.title|urlencode }}">{{ lit.title }}</a></h3>
+            <h3><a href="/literature/{{ lit.id }}/">{{ lit.title }}</a></h3>
             <div class="literature-meta">
                 {% if lit.category %}<span class="tag">{{ lit.category }}</span>{% endif %}
                 <span>{{ lit.journal|default:'未知期刊' }}</span>

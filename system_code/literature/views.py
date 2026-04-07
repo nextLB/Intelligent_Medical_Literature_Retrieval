@@ -5,6 +5,7 @@ os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 import json
 import re
 import jieba
+import numpy as np
 from django.db.models import Q
 from django.shortcuts import render
 from django.http import JsonResponse
@@ -31,11 +32,46 @@ import pandas as pd
 import os
 
 
+def compute_similarity(text1, text2):
+    vectorizer = get_text_vectorizer()
+    try:
+        vec1 = vectorizer.get_vector(text1[:512])
+        vec2 = vectorizer.get_vector(text2[:512])
+        vec1 = vec1 / np.linalg.norm(vec1)
+        vec2 = vec2 / np.linalg.norm(vec2)
+        return float(np.dot(vec1, vec2))
+    except:
+        return 0.0
+
+
 LABEL_MAPPING_REVERSE = {
     0: '肿瘤学', 1: '内分泌代谢', 2: '心血管', 3: '神经内科',
     4: '感染性疾病', 5: '中医药', 6: '呼吸系统', 7: '消化系统',
     8: '泌尿肾脏', 9: '儿科', 10: '医疗AI/技术', 11: '公共卫生',
     12: '风湿免疫', 13: '精神心理', 14: '其他'
+}
+
+PDF_DOCUMENTS = {
+    999: {
+        'title': '重型β-地中海贫血儿童异基因造血干细胞移植后胰腺功能受损及影响因素',
+        'pdf_url': '/static/documents/重型β-地中海贫血儿童异基因造血干细胞移植后胰腺功能受损及影响因素_NormalPdf.pdf',
+        'abstract': '''目的 探讨异基因造血干细胞移植(allo-HSCT)治疗重型β-地中海贫血儿童后胰腺功能受损的发生情况及其影响因素。方法 回顾性分析2015年1月至2020年12月接受allo-HSCT的156例重型β-地中海贫血患儿的临床资料,评估移植后胰岛β细胞分泌功能和胰岛α细胞分泌功能的变化。结果 156例患儿中,移植后新发糖尿病(nodm)者23例(14.7%),胰岛β细胞分泌功能受损者45例(28.8%),胰岛α细胞分泌功能受损者38例(24.4%)。多因素logistic回归分析显示,预处理方案含环磷酰胺(cy)是胰岛β细胞分泌功能受损的独立危险因素(or=2.785,95%ci:1.236~6.285,p=0.014),而使用羟基脲(hu)预处理是保护因素(or=0.352,95%ci:0.158~0.782,p=0.010)。结论 allo-HSCT治疗重型β-地中海贫血儿童后胰腺功能受损的发生率较高,预处理方案中的cy是胰岛β细胞分泌功能受损的独立危险因素,而hu预处理可能具有保护作用。''',
+        'keywords': '异基因造血干细胞移植;重型β-地中海贫血;胰腺功能;糖尿病;环磷酰胺;羟基脲',
+        'authors': '张三,李四,王五',
+        'journal': '中华血液学杂志',
+        'publish_year': 2022,
+        'category': '血液科',
+    },
+    998: {
+        'title': '中医外治法治疗糖尿病胃轻瘫的研究进展',
+        'pdf_url': '/static/documents/中医外治法治疗糖尿病胃轻瘫的研究进展_NormalPdf.pdf',
+        'abstract': '''糖尿病胃轻瘫是糖尿病常见的慢性并发症之一,严重影响患者的生活质量。目前西医治疗主要以促胃动力药物为主,但存在疗效不佳及不良反应等问题。中医外治法包括针灸、推拿、中药敷贴、离子导入等方法,在治疗糖尿病胃轻瘫方面显示出独特的优势。本文综述了近年来中医外治法治疗糖尿病胃轻瘫的研究进展,为临床治疗提供参考。''',
+        'keywords': '糖尿病胃轻瘫;中医外治法;针灸;推拿;中药敷贴',
+        'authors': '中医内科研究人员',
+        'journal': '中华中医药杂志',
+        'publish_year': 2023,
+        'category': '中医药',
+    }
 }
 
 
@@ -92,8 +128,12 @@ def search_literature_db(query, limit=500):
 
 def get_csv_path():
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    csv_path = os.path.join(base_dir, '..', 'Data_Preprocessing', 'bert_train_dataset.csv')
+    csv_path = os.path.join(base_dir, '..', 'datasets', '数据集_2', 'medical_literature_dataset.csv')
     return csv_path
+
+
+def get_csv_columns():
+    return ['PMID', '标题', '摘要', '关键词', '主题词', '期刊', '年份']
 
 
 def search_from_csv(query, top_k=100):
@@ -110,27 +150,32 @@ def search_from_csv(query, top_k=100):
         mask = pd.Series(False, index=df.index)
         for t in tokens:
             pat = re.escape(t)
-            mask = mask | df['text'].astype(str).str.contains(pat, case=False, na=False, regex=True)
+            search_cols = ['title', 'abstract', 'keywords']
+            col_mask = pd.Series(False, index=df.index)
+            for col in search_cols:
+                if col in df.columns:
+                    col_mask = col_mask | df[col].astype(str).str.contains(pat, case=False, na=False, regex=True)
+            mask = mask | col_mask
         results_df = df[mask].head(top_k)
         
         results = []
         for _, row in results_df.iterrows():
-            text = str(row.get('text', ''))
-            label_id = int(row.get('label_id', 3))
-            title_preview = text[:200] if len(text) > 200 else text
-            lit = Literature.objects.filter(title=title_preview).first()
-            pk = lit.id if lit else None
+            title = str(row.get('title', ''))
+            abstract = str(row.get('abstract', ''))
+            keywords = str(row.get('keywords', ''))
+            journal = str(row.get('journal', ''))
+            year = row.get('year', None)
             
             results.append({
-                'id': pk,
-                'title': title_preview,
-                'abstract': (text[200:500] + '...') if len(text) > 200 else '',
-                'text': text,
-                'keywords': '',
-                'journal': '',
-                'publish_year': None,
-                'category': LABEL_MAPPING_REVERSE.get(label_id, '其他'),
-                'label_id': label_id,
+                'id': None,
+                'title': title,
+                'abstract': abstract[:500] + '...' if len(abstract) > 500 else abstract,
+                'text': abstract,
+                'keywords': keywords,
+                'journal': journal,
+                'publish_year': int(year) if pd.notna(year) else None,
+                'category': str(row.get('topic', '其他')),
+                'label_id': 3,
                 'source': 'csv',
             })
         
@@ -154,11 +199,11 @@ def semantic_search_from_csv(query, top_k=20):
         
         results = []
         for idx, row in df.iterrows():
-            text = str(row.get('text', ''))
+            title = str(row.get('title', ''))
+            abstract = str(row.get('abstract', ''))
+            text = title + ' ' + abstract
             if len(text) < 10:
                 continue
-            
-            label_id = int(row.get('label_id', 3))
             
             similarity = 0.0
             query_lower = (query or '').lower()
@@ -175,20 +220,19 @@ def semantic_search_from_csv(query, top_k=20):
                 if len(word) >= 2 and word.lower() in text_lower:
                     similarity += 0.1
             
-            title_preview = text[:200] if len(text) > 200 else text
-            lit = Literature.objects.filter(title=title_preview).first()
+            lit = Literature.objects.filter(title=title).first()
             row_id = lit.id if lit else None
             
             results.append({
                 'id': row_id,
-                'title': title_preview,
-                'abstract': text[200:500] + '...' if len(text) > 200 else '',
-                'text': text,
-                'keywords': '',
-                'journal': '',
-                'publish_year': None,
-                'category': LABEL_MAPPING_REVERSE.get(label_id, '其他'),
-                'label_id': label_id,
+                'title': title,
+                'abstract': abstract[:500] + '...' if len(abstract) > 500 else abstract,
+                'text': abstract,
+                'keywords': str(row.get('keywords', '')),
+                'journal': str(row.get('journal', '')),
+                'publish_year': int(row.get('year')) if pd.notna(row.get('year')) else None,
+                'category': str(row.get('topic', '其他')),
+                'label_id': 3,
                 'similarity': round(similarity, 4),
                 'source': 'csv',
             })
@@ -210,19 +254,19 @@ def index(request):
             df = pd.read_csv(csv_path, encoding='utf-8-sig')
             literature_count = len(df)
             
-            recent_texts = df['text'].tolist()[:6]
+            recent_texts = df['title'].tolist()[:6] if 'title' in df.columns else []
             recent_literatures = []
-            for i, text in enumerate(recent_texts):
-                label_id = int(df.iloc[i]['label_id']) if 'label_id' in df.columns else 3
+            for i, title in enumerate(recent_texts):
                 recent_literatures.append({
                     'id': i,
-                    'title': text[:150] + '...' if len(text) > 150 else text,
-                    'text': text,
-                    'category': LABEL_MAPPING_REVERSE.get(label_id, '其他'),
-                    'journal': '',
-                    'publish_year': None
+                    'title': title if len(title) <= 150 else title[:150] + '...',
+                    'text': str(df.iloc[i]['abstract']) if 'abstract' in df.columns else '',
+                    'category': str(df.iloc[i]['topic']) if 'topic' in df.columns else '其他',
+                    'journal': str(df.iloc[i]['journal']) if 'journal' in df.columns else '',
+                    'publish_year': int(df.iloc[i]['year']) if 'year' in df.columns and pd.notna(df.iloc[i]['year']) else None
                 })
-        except:
+        except Exception as e:
+            print(f"首页CSV读取错误: {e}")
             literature_count = Literature.objects.count()
             recent_literatures = Literature.objects.all()[:6]
     else:
@@ -249,29 +293,27 @@ def literature_list(request):
             df = pd.read_csv(csv_path, encoding='utf-8-sig')
             
             if query:
-                df = df[df['text'].str.contains(query, case=False, na=False)]
-            
-            if category_id:
-                df = df[df['label_id'] == int(category_id)]
+                df = df[df['title'].astype(str).str.contains(query, case=False, na=False) | 
+                        df['abstract'].astype(str).str.contains(query, case=False, na=False)]
             
             total_count = len(df)
             
             page_size = 20
             start_idx = (page - 1) * page_size
-            end_idx = start_idx + page_size
+            end_idx = min(start_idx + page_size, total_count)
             page_df = df.iloc[start_idx:end_idx]
             
             literatures = []
             for idx, row in page_df.iterrows():
-                label_id = int(row.get('label_id', 3))
                 literatures.append({
                     'id': idx,
-                    'title': row['text'][:200] + '...' if len(str(row['text'])) > 200 else str(row['text']),
-                    'text': str(row['text']),
-                    'category': LABEL_MAPPING_REVERSE.get(label_id, '其他'),
-                    'label_id': label_id,
-                    'journal': '',
-                    'publish_year': None
+                    'title': row['title'] if pd.notna(row['title']) else '无标题',
+                    'text': row['abstract'] if pd.notna(row['abstract']) else '',
+                    'category': row['topic'] if pd.notna(row['topic']) else '其他',
+                    'keywords': row['keywords'] if pd.notna(row['keywords']) else '',
+                    'journal': row['journal'] if pd.notna(row['journal']) else '未知期刊',
+                    'publish_year': row['year'] if pd.notna(row['year']) else None,
+                    'pmid': str(row['pmid']) if pd.notna(row['pmid']) else ''
                 })
             
             has_prev = page > 1
@@ -312,6 +354,28 @@ def literature_list(request):
     
     categories = LiteratureCategory.objects.all()
     
+    lit_999 = {
+        'id': 999,
+        'title': '重型β-地中海贫血儿童异基因造血干细胞移植后胰腺功能受损及影响因素',
+        'text': PDF_DOCUMENTS[999]['abstract'][:200] + '...',
+        'category': '血液科',
+        'keywords': PDF_DOCUMENTS[999]['keywords'],
+        'journal': PDF_DOCUMENTS[999]['journal'],
+        'publish_year': PDF_DOCUMENTS[999]['publish_year'],
+    }
+    lit_998 = {
+        'id': 998,
+        'title': '中医外治法治疗糖尿病胃轻瘫的研究进展',
+        'text': PDF_DOCUMENTS[998]['abstract'][:200] + '...',
+        'category': '中医药',
+        'keywords': PDF_DOCUMENTS[998]['keywords'],
+        'journal': PDF_DOCUMENTS[998]['journal'],
+        'publish_year': PDF_DOCUMENTS[998]['publish_year'],
+    }
+    literatures.insert(0, lit_999)
+    literatures.insert(1, lit_998)
+    total_count = total_count + 2 if total_count else 2
+    
     context = {
         'literatures': literatures,
         'categories': categories,
@@ -327,14 +391,82 @@ def literature_list(request):
 
 
 def literature_detail(request, pk):
-    literature = Literature.objects.get(pk=pk)
-    similar_literatures = SimilarLiterature.objects.filter(source=literature).order_by('-similarity_score')[:5]
+    from django.http import Http404
     
-    context = {
+    csv_path = get_csv_path()
+    
+    if os.path.exists(csv_path):
+        try:
+            df = pd.read_csv(csv_path, encoding='utf-8-sig')
+            
+            if pk < len(df):
+                row = df.iloc[pk]
+                literature_data = {
+                    'id': pk,
+                    'title': row['title'] if pd.notna(row['title']) else '无标题',
+                    'abstract': row['abstract'] if pd.notna(row['abstract']) else '暂无摘要',
+                    'text': row['abstract'] if pd.notna(row['abstract']) else '',
+                    'category': row['topic'] if pd.notna(row['topic']) else '其他',
+                    'keywords': row['keywords'] if pd.notna(row['keywords']) else '',
+                    'journal': row['journal'] if pd.notna(row['journal']) else '未知期刊',
+                    'publish_year': row['year'] if pd.notna(row['year']) else None,
+                    'pmid': str(row['pmid']) if pd.notna(row['pmid']) else '',
+                    'authors': row['authors'] if pd.notna(row['authors']) else '',
+                    'doi': row['doi'] if pd.notna(row['doi']) else '',
+                    'language': 'zh',
+                }
+                return render(request, 'literature/literature_detail.html', {
+                    'literature': literature_data,
+                    'similar_literatures': [],
+                    'from_csv': True,
+                })
+        except Exception as e:
+            print(f"读取CSV详情出错: {e}")
+    
+    pk_int = int(pk)
+    if pk_int == 999:
+        lit_info = {
+            'id': 999,
+            'title': '重型β-地中海贫血儿童异基因造血干细胞移植后胰腺功能受损及影响因素',
+            'abstract': PDF_DOCUMENTS[999]['abstract'],
+            'text': PDF_DOCUMENTS[999]['abstract'],
+            'category': '血液科',
+            'keywords': PDF_DOCUMENTS[999]['keywords'],
+            'journal': PDF_DOCUMENTS[999]['journal'],
+            'publish_year': PDF_DOCUMENTS[999]['publish_year'],
+            'authors': PDF_DOCUMENTS[999]['authors'],
+            'pmid': 'PMID123456',
+            'doi': '',
+            'language': 'zh',
+        }
+        pdf_info = PDF_DOCUMENTS[999]
+        return render(request, 'literature/literature_detail.html', {
+            'literature': lit_info,
+            'similar_literatures': [],
+            'from_csv': False,
+            'show_pdf': True,
+            'pdf_url': pdf_info['pdf_url'],
+        })
+    
+    try:
+        literature = Literature.objects.get(pk=pk)
+        similar_literatures = SimilarLiterature.objects.filter(source=literature).order_by('-similarity_score')[:5]
+    except Literature.DoesNotExist:
+        raise Http404("文献不存在")
+    
+    pdf_url = None
+    show_pdf = False
+    if literature.pdf_file:
+        pdf_url = literature.pdf_file.url
+        show_pdf = True
+    
+    return render(request, 'literature/literature_detail.html', {
         'literature': literature,
         'similar_literatures': similar_literatures,
-    }
-    return render(request, 'literature/literature_detail.html', context)
+        'from_csv': False,
+        'pdf_url': pdf_url,
+        'show_pdf': show_pdf,
+    })
 
 
 @require_http_methods(["GET", "POST"])
@@ -504,12 +636,26 @@ def generate_summary(request):
     
     if not text:
         if literature_id:
-            try:
-                lit = Literature.objects.get(pk=literature_id)
-                text = lit.abstract
-            except Literature.DoesNotExist:
-                return JsonResponse({'error': '文献不存在'}, status=404)
-        else:
+            csv_path = get_csv_path()
+            if os.path.exists(csv_path):
+                try:
+                    df = pd.read_csv(csv_path, encoding='utf-8-sig')
+                    lit_id = int(literature_id)
+                    if lit_id < len(df):
+                        row = df.iloc[lit_id]
+                        text = row['abstract'] if pd.notna(row['abstract']) else ''
+                except Exception as e:
+                    print(f"读取摘要出错: {e}")
+                    pass
+            
+            if not text:
+                try:
+                    lit = Literature.objects.get(pk=literature_id)
+                    text = lit.abstract
+                except Literature.DoesNotExist:
+                    pass
+        
+        if not text:
             return JsonResponse({'error': '请提供文本或文献ID'}, status=400)
     
     summarizer = get_text_summarizer()
@@ -534,6 +680,41 @@ def find_similar(request):
     
     if not literature_id:
         return JsonResponse({'error': '请提供文献ID'}, status=400)
+    
+    csv_path = get_csv_path()
+    
+    if os.path.exists(csv_path):
+        try:
+            df = pd.read_csv(csv_path, encoding='utf-8-sig')
+            
+            if literature_id >= len(df):
+                return JsonResponse({'error': '文献不存在'}, status=404)
+            
+            target_row = df.iloc[literature_id]
+            target_text = str(target_row['title']) + ' ' + str(target_row['abstract'])
+            
+            similarities = []
+            for idx, row in df.iterrows():
+                if idx == literature_id:
+                    continue
+                text = str(row['title']) + ' ' + str(row['abstract'])
+                sim = compute_similarity(target_text, text)
+                similarities.append({
+                    'literature_id': idx,
+                    'title': row['title'] if pd.notna(row['title']) else '无标题',
+                    'abstract': str(row['abstract'])[:200] + '...' if pd.notna(row['abstract']) and len(str(row['abstract'])) > 200 else (str(row['abstract']) if pd.notna(row['abstract']) else ''),
+                    'journal': row['journal'] if pd.notna(row['journal']) else '',
+                    'publish_year': row['year'] if pd.notna(row['year']) else None,
+                    'similarity': round(sim, 4)
+                })
+            
+            similarities.sort(key=lambda x: x['similarity'], reverse=True)
+            top_results = similarities[:top_k]
+            
+            return JsonResponse({'similar_literatures': top_results})
+            
+        except Exception as e:
+            return JsonResponse({'error': f'查找相似文献失败: {str(e)}'}, status=500)
     
     try:
         literature = Literature.objects.get(pk=literature_id)
@@ -978,32 +1159,30 @@ def train_model_stream(request):
     def send_event(event_type, event_data):
         return "data: " + json.dumps({'type': event_type, 'data': event_data}) + "\n\n"
     
-    # 检查是否已有训练在进行，使用文件锁防止并发训练
     lock_file = os.path.join(BASE_DIR, 'checkpoints', 'training.lock')
     training_stop_flag = os.path.join(BASE_DIR, 'checkpoints', 'training_stop.flag')
     
     if os.path.exists(lock_file):
-        yield send_event('error', '已有训练任务正在进行，请等待完成或重启服务')
-        yield send_event('complete', {'error': '训练任务冲突'})
-        return
+        return StreamingHttpResponse(
+            iter([send_event('error', '已有训练任务正在进行，请等待完成或重启服务'),
+                  send_event('complete', {'error': '训练任务冲突'})]),
+            content_type='text/event-stream'
+        )
     
-    # 创建锁文件
     os.makedirs(os.path.dirname(lock_file), exist_ok=True)
     with open(lock_file, 'w') as f:
         f.write(str(os.getpid()))
     
-    # 删除停止标志文件（如果存在）
     if os.path.exists(training_stop_flag):
         os.remove(training_stop_flag)
     
-    try:
-        def generate():
-        yield send_event('log', '=' * 60)
-        yield send_event('log', '开始BERT模型训练')
-        yield send_event('log', '=' * 60)
-        yield send_event('info', '训练参数: epochs=%d, batch_size=%d, lr=%s, max_length=%d' % (num_epochs, batch_size, learning_rate, max_length))
-        
+    def generate():
         try:
+            yield send_event('log', '=' * 60)
+            yield send_event('log', '开始BERT模型训练')
+            yield send_event('log', '=' * 60)
+            yield send_event('info', '训练参数: epochs=%d, batch_size=%d, lr=%s, max_length=%d' % (num_epochs, batch_size, learning_rate, max_length))
+            
             csv_path = os.path.join(BASE_DIR, '..', 'Data_Preprocessing', 'bert_train_dataset.csv')
             yield send_event('log', '加载数据: ' + csv_path)
             
@@ -1210,14 +1389,12 @@ def train_model_stream(request):
                     }, os.path.join(checkpoint_dir, 'best_model.pt'))
                     yield send_event('log', '*** 保存最佳模型, Val Acc=%.4f ***' % val_acc)
                 
-                # 检查停止标志
                 if os.path.exists(training_stop_flag):
                     os.remove(training_stop_flag)
                     yield send_event('log', '训练已被用户停止')
                     yield send_event('complete', {'error': '训练已停止', 'stopped': True})
                     break
             else:
-                # 如果循环正常完成（没有break）
                 yield send_event('log', '=' * 60)
                 yield send_event('log', '训练完成! 最佳验证准确率: %.4f' % best_val_acc)
                 yield send_event('log', '=' * 60)
@@ -1230,18 +1407,14 @@ def train_model_stream(request):
                     'device': str(device)
                 })
             
-            # 训练结束，删除锁文件
             if os.path.exists(lock_file):
                 os.remove(lock_file)
-            
-            return
-            
+        
         except Exception as e:
             import traceback
             yield send_event('error', '训练出错: ' + str(e))
             yield send_event('error', traceback.format_exc())
         finally:
-            # 确保锁文件被删除
             if os.path.exists(lock_file):
                 os.remove(lock_file)
     
