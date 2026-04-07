@@ -132,6 +132,40 @@ def get_csv_path():
     return csv_path
 
 
+def find_pdf_for_literature(title):
+    """根据文献标题查找对应的PDF文件"""
+    import os
+    import re
+
+    # 定义静态PDF目录路径
+    static_docs_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'static', 'documents')
+    docs_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'documents')
+
+    # 检查两个目录
+    for pdf_dir in [static_docs_dir, docs_dir]:
+        if not os.path.exists(pdf_dir):
+            continue
+
+        # 列出目录下所有PDF文件
+        for filename in os.listdir(pdf_dir):
+            if filename.lower().endswith('.pdf'):
+                # 简化匹配逻辑：检查标题中的关键词是否在文件名中
+                # 移除标题中的特殊字符和空格
+                title_clean = re.sub(r'[^\w\u4e00-\u9fff]', '', title)
+                filename_clean = re.sub(r'[^\w\u4e00-\u9fff]', '', filename)
+
+                # 检查文件名是否包含标题的关键部分（取前20个字符）
+                if len(title_clean) > 0 and title_clean[:20] in filename_clean:
+                    # 根据目录确定URL
+                    if pdf_dir == static_docs_dir:
+                        return f'/static/documents/{filename}'
+                    else:
+                        return f'/documents/{filename}'
+
+    # 如果没有找到，返回None
+    return None
+
+
 def get_csv_columns():
     return ['PMID', '标题', '摘要', '关键词', '主题词', '期刊', '年份']
 
@@ -150,7 +184,7 @@ def search_from_csv(query, top_k=100):
         mask = pd.Series(False, index=df.index)
         for t in tokens:
             pat = re.escape(t)
-            search_cols = ['title', 'abstract', 'keywords']
+            search_cols = ['title', 'abstract', 'keywords', 'topic']
             col_mask = pd.Series(False, index=df.index)
             for col in search_cols:
                 if col in df.columns:
@@ -313,7 +347,8 @@ def literature_list(request):
                     'keywords': row['keywords'] if pd.notna(row['keywords']) else '',
                     'journal': row['journal'] if pd.notna(row['journal']) else '未知期刊',
                     'publish_year': row['year'] if pd.notna(row['year']) else None,
-                    'pmid': str(row['pmid']) if pd.notna(row['pmid']) else ''
+                    'pmid': str(row['pmid']) if pd.notna(row['pmid']) else '',
+                    'pdf_url': find_pdf_for_literature(row['title'] if pd.notna(row['title']) else '')
                 })
             
             has_prev = page > 1
@@ -344,7 +379,8 @@ def literature_list(request):
                 'category': lit.category.name if lit.category else '',
                 'label_id': lit.category.id if lit.category else 3,
                 'journal': lit.journal,
-                'publish_year': lit.publish_year
+                'publish_year': lit.publish_year,
+                'pdf_url': find_pdf_for_literature(lit.title)
             })
         
         has_prev = page_obj.has_previous()
@@ -362,6 +398,7 @@ def literature_list(request):
         'keywords': PDF_DOCUMENTS[999]['keywords'],
         'journal': PDF_DOCUMENTS[999]['journal'],
         'publish_year': PDF_DOCUMENTS[999]['publish_year'],
+        'pdf_url': PDF_DOCUMENTS[999]['pdf_url']
     }
     lit_998 = {
         'id': 998,
@@ -371,6 +408,7 @@ def literature_list(request):
         'keywords': PDF_DOCUMENTS[998]['keywords'],
         'journal': PDF_DOCUMENTS[998]['journal'],
         'publish_year': PDF_DOCUMENTS[998]['publish_year'],
+        'pdf_url': PDF_DOCUMENTS[998]['pdf_url']
     }
     literatures.insert(0, lit_999)
     literatures.insert(1, lit_998)
