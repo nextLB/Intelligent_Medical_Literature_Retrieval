@@ -1,0 +1,90 @@
+{% extends 'literature/admin/base.html' %}
+
+{% block title %}管理首页{% endblock %}
+
+{% block admin_content %}
+<div class="stats-grid">
+    <div class="stat-card">
+        <h3>{{ user_count }}</h3>
+        <p>用户总数</p>
+    </div>
+    <div class="stat-card green">
+        <h3>{{ literature_count }}</h3>
+        <p>文献总数</p>
+    </div>
+    <div class="stat-card orange">
+        <h3>{{ category_count }}</h3>
+        <p>分类总数</p>
+    </div>
+    <div class="stat-card blue">
+        <h3>{{ search_count }}</h3>
+        <p>搜索记录</p>
+    </div>
+</div>
+
+<div class="admin-card" style="margin-top: 20px;">
+    <h2>最近注册用户</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>用户名</th>
+                <th>邮箱</th>
+                <th>角色</th>
+                <th>注册时间</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for u in recent_users %}
+            <tr>
+                <td>{{ u.username }}</td>
+                <td>{{ u.email|default:"-" }}</td>
+                <td>
+                    {% if u.profile.role == 'admin' %}
+                    <span class="badge badge-admin">管理员</span>
+                    {% else %}
+                    <span class="badge badge-user">普通用户</span>
+                    {% endif %}
+                </td>
+                <td>{{ u.date_joined|date:"Y-m-d H:i" }}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="4" class="empty-state">暂无用户</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="admin-card">
+    <h2>最近搜索记录</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>搜索词</th>
+                <th>类型</th>
+                <th>结果数</th>
+                <th>搜索时间</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for s in recent_searches %}
+            <tr>
+                <td>{{ s.query }}</td>
+                <td>
+                    {% if s.search_type == 'keyword' %}关键词搜索
+                    {% elif s.search_type == 'semantic' %}语义搜索
+                    {% else %}分类搜索{% endif %}
+                </td>
+                <td>{{ s.results_count }}</td>
+                <td>{{ s.created_at|date:"Y-m-d H:i" }}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="4" class="empty-state">暂无搜索记录</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

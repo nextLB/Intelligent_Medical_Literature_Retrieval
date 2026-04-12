@@ -20,7 +20,20 @@
                 <li><a href="/classification/">主题分类</a></li>
                 <li><a href="/training/">模型训练</a></li>
                 <li><a href="/evaluation/">模型评估</a></li>
-                <li><a href="/data-import/">数据导入</a></li>
+                {% if user.is_authenticated %}
+                    {% if user.profile.role == 'admin' %}
+                    <li><a href="/admin/">管理后台</a></li>
+                    <li><a href="/admin/users/">用户管理</a></li>
+                    <li><a href="/admin/literatures/">文献管理</a></li>
+                    {% endif %}
+                    <li class="user-info">
+                        <span>{{ user.username }}</span>
+                        <a href="/logout/" class="logout-link">退出</a>
+                    </li>
+                {% else %}
+                    <li><a href="/login/">登录</a></li>
+                    <li><a href="/register/">注册</a></li>
+                {% endif %}
             </ul>
         </div>
     </nav>

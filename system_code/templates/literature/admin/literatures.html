@@ -1,0 +1,77 @@
+{% extends 'literature/admin/base.html' %}
+
+{% block title %}文献管理{% endblock %}
+
+{% block admin_content %}
+<div class="admin-card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h2>文献列表</h2>
+        <button class="btn btn-primary" onclick="location.href='/admin/literatures/create/'">添加文献</button>
+    </div>
+    
+    <form method="get" style="margin-bottom: 20px; display: flex; gap: 10px;">
+        <input type="text" name="q" value="{{ query }}" placeholder="搜索标题/摘要/关键词" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+        <select name="category" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+            <option value="">全部分类</option>
+            {% for c in categories %}
+            <option value="{{ c.id }}" {% if current_category == c.id %}selected{% endif %}>{{ c.name }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-primary">搜索</button>
+    </form>
+    
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>标题</th>
+                <th>分类</th>
+                <th>期刊</th>
+                <th>年份</th>
+                <th>创建时间</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for lit in literatures %}
+            <tr>
+                <td>{{ lit.id }}</td>
+                <td>{{ lit.title|truncatechars:50 }}</td>
+                <td>{{ lit.category.name|default:"-" }}</td>
+                <td>{{ lit.journal|default:"-" }}</td>
+                <td>{{ lit.publish_year|default:"-" }}</td>
+                <td>{{ lit.created_at|date:"Y-m-d" }}</td>
+                <td>
+                    <button class="btn btn-primary btn-sm" onclick="location.href='/admin/literatures/{{ lit.id }}/edit/'">编辑</button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteLiterature({{ lit.id }}, '{{ lit.title|escapejs }}')">删除</button>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="7" class="empty-state">暂无文献</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    
+    {% if total_pages > 1 %}
+    <div class="pagination">
+        {% for p in page_obj.paginator.page_range %}
+        <a href="?page={{ p }}{% if query %}&q={{ query }}{% endif %}{% if current_category %}&category={{ current_category }}{% endif %}" {% if p == current_page %}class="active"{% endif %}>{{ p }}</a>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+
+<script>
+function deleteLiterature(id, title) {
+    if (!confirm(`确定要删除文献 "${title}" 吗？`)) return;
+    fetch(`/admin/literatures/${id}/delete/`, { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) alert(data.error);
+            else location.reload();
+        });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,120 @@
+{% extends 'literature/admin/base.html' %}
+
+{% block title %}分类管理{% endblock %}
+
+{% block admin_content %}
+<div class="admin-card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h2>分类列表</h2>
+        <button class="btn btn-primary" onclick="showCreateModal()">添加分类</button>
+    </div>
+    
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>分类名称</th>
+                <th>英文名</th>
+                <th>描述</th>
+                <th>文献数</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for c in categories %}
+            <tr>
+                <td>{{ c.id }}</td>
+                <td>{{ c.name }}</td>
+                <td>{{ c.name_en|default:"-" }}</td>
+                <td>{{ c.description|truncatechars:30|default:"-" }}</td>
+                <td>{{ c.literatures.count }}</td>
+                <td>
+                    <button class="btn btn-primary btn-sm" onclick="editCategory({{ c.id }}, '{{ c.name }}', '{{ c.name_en|default:"" }}', '{{ c.description|escapejs }}')">编辑</button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteCategory({{ c.id }}, '{{ c.name }}')">删除</button>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="6" class="empty-state">暂无分类</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div id="categoryModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5);">
+    <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 30px; border-radius: 8px; width: 400px;">
+        <h3 id="modalTitle" style="margin-bottom: 20px;">添加分类</h3>
+        <form id="categoryForm">
+            {% csrf_token %}
+            <div class="form-group">
+                <label>分类名称 *</label>
+                <input type="text" name="name" id="catName" required>
+            </div>
+            <div class="form-group">
+                <label>英文名称</label>
+                <input type="text" name="name_en" id="catNameEn">
+            </div>
+            <div class="form-group">
+                <label>描述</label>
+                <textarea name="description" id="catDesc" rows="3" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;"></textarea>
+            </div>
+            <div style="text-align: right;">
+                <button type="button" class="btn" onclick="closeModal()">取消</button>
+                <button type="submit" class="btn btn-primary">保存</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+let currentEditId = null;
+
+function showCreateModal() {
+    currentEditId = null;
+    document.getElementById('modalTitle').textContent = '添加分类';
+    document.getElementById('categoryForm').reset();
+    document.getElementById('categoryModal').style.display = 'block';
+}
+
+function editCategory(id, name, name_en, description) {
+    currentEditId = id;
+    document.getElementById('modalTitle').textContent = '编辑分类';
+    document.getElementById('catName').value = name;
+    document.getElementById('catNameEn').value = name_en;
+    document.getElementById('catDesc').value = description;
+    document.getElementById('categoryModal').style.display = 'block';
+}
+
+function closeModal() {
+    document.getElementById('categoryModal').style.display = 'none';
+}
+
+document.getElementById('categoryForm').onsubmit = function(e) {
+    e.preventDefault();
+    const formData = new FormData(this);
+    const url = currentEditId ? `/admin/categories/${currentEditId}/edit/` : '/admin/categories/create/';
+    
+    fetch(url, {
+        method: 'POST',
+        body: formData
+    }).then(r => r.json()).then(data => {
+        if (data.error) {
+            alert(data.error);
+        } else {
+            location.reload();
+        }
+    });
+};
+
+function deleteCategory(id, name) {
+    if (!confirm(`确定要删除分类 "${name}" 吗？`)) return;
+    fetch(`/admin/categories/${id}/delete/`, { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) alert(data.error);
+            else location.reload();
+        });
+};
+</script>
+{% endblock %}

@@ -83,6 +83,11 @@ REST_FRAMEWORK = {
     'PAGE_SIZE': 20,
 }
 
+LOGIN_URL = '/login/'
+LOGIN_REDIRECT_URL = '/'
+LOGOUT_REDIRECT_URL = '/login/'
+LOGIN_REQUIRED_IGNORE = ['/login/', '/register/', '/api/', '/static/']
+
 BERT_MODEL_PATH = 'bert-base-chinese'
 MAX_SEQUENCE_LENGTH = 256
 VECTOR_DIMENSION = 768

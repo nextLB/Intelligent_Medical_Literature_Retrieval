@@ -3,6 +3,10 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
+    path('login/', views.login_view, name='login'),
+    path('logout/', views.logout_view, name='logout'),
+    path('register/', views.register_view, name='register'),
+    
     path('', views.index, name='index'),
     path('literatures/', views.literature_list, name='literature_list'),
     path('literature/<int:pk>/', views.literature_detail, name='literature_detail'),
@@ -24,4 +28,18 @@ urlpatterns = [
     path('api/train-stream/', views.train_model_stream, name='train_stream'),
     path('api/train-stop/', views.stop_training, name='train_stop'),
     path('api/training-history/', views.get_training_history, name='training_history'),
+    
+    path('admin/', views.admin_index, name='admin_index'),
+    path('admin/users/', views.admin_users, name='admin_users'),
+    path('admin/users/create/', views.admin_user_create, name='admin_user_create'),
+    path('admin/users/<int:pk>/edit/', views.admin_user_edit, name='admin_user_edit'),
+    path('admin/users/<int:pk>/delete/', views.admin_user_delete, name='admin_user_delete'),
+    path('admin/literatures/', views.admin_literatures, name='admin_literatures'),
+    path('admin/literatures/create/', views.admin_literature_create, name='admin_literature_create'),
+    path('admin/literatures/<int:pk>/edit/', views.admin_literature_edit, name='admin_literature_edit'),
+    path('admin/literatures/<int:pk>/delete/', views.admin_literature_delete, name='admin_literature_delete'),
+    path('admin/categories/', views.admin_categories, name='admin_categories'),
+    path('admin/categories/create/', views.admin_category_create, name='admin_category_create'),
+    path('admin/categories/<int:pk>/edit/', views.admin_category_edit, name='admin_category_edit'),
+    path('admin/categories/<int:pk>/delete/', views.admin_category_delete, name='admin_category_delete'),
 ]

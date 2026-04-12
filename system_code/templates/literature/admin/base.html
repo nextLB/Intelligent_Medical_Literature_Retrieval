@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}管理后台 - 医学文献智能检索系统{% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; }
+        .admin-header { background: #2c3e50; color: white; padding: 0 20px; height: 60px; display: flex; align-items: center; justify-content: space-between; }
+        .admin-header h1 { font-size: 20px; }
+        .admin-header a { color: white; text-decoration: none; margin-left: 20px; }
+        .admin-header .user-info { display: flex; align-items: center; gap: 15px; }
+        .admin-container { display: flex; min-height: calc(100vh - 60px); }
+        .admin-sidebar { width: 220px; background: white; border-right: 1px solid #ddd; }
+        .admin-sidebar ul { list-style: none; }
+        .admin-sidebar li a { display: block; padding: 15px 20px; color: #333; text-decoration: none; border-bottom: 1px solid #f0f0f0; }
+        .admin-sidebar li a:hover, .admin-sidebar li a.active { background: #3498db; color: white; }
+        .admin-content { flex: 1; padding: 20px; }
+        .admin-card { background: white; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .admin-card h2 { font-size: 18px; margin-bottom: 15px; color: #2c3e50; }
+        .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+        .stat-card { background: linear-gradient(135deg, #667eea, #764ba2); color: white; padding: 20px; border-radius: 8px; text-align: center; }
+        .stat-card h3 { font-size: 32px; margin-bottom: 5px; }
+        .stat-card p { font-size: 14px; opacity: 0.9; }
+        .stat-card.green { background: linear-gradient(135deg, #11998e, #38ef7d); }
+        .stat-card.orange { background: linear-gradient(135deg, #f093fb, #f5576c); }
+        .stat-card.blue { background: linear-gradient(135deg, #4facfe, #00f2fe); }
+        table { width: 100%; border-collapse: collapse; }
+        table th, table td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; }
+        table th { background: #f8f9fa; font-weight: 600; }
+        .btn { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
+        .btn-primary { background: #3498db; color: white; }
+        .btn-danger { background: #e74c3c; color: white; }
+        .btn-success { background: #2ecc71; color: white; }
+        .btn-sm { padding: 5px 10px; font-size: 12px; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: 500; }
+        .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; }
+        .pagination { display: flex; gap: 5px; justify-content: center; margin-top: 20px; }
+        .pagination a { padding: 8px 12px; background: #fff; border: 1px solid #ddd; color: #333; text-decoration: none; border-radius: 4px; }
+        .pagination a.active { background: #3498db; color: white; border-color: #3498db; }
+        .alert { padding: 15px; border-radius: 4px; margin-bottom: 20px; }
+        .alert-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .alert-error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .badge { padding: 3px 8px; border-radius: 3px; font-size: 12px; }
+        .badge-admin { background: #e74c3c; color: white; }
+        .badge-user { background: #3498db; color: white; }
+        .empty-state { text-align: center; padding: 40px; color: #999; }
+    </style>
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <header class="admin-header">
+        <h1>医学文献智能检索系统 - 管理后台</h1>
+        <div class="user-info">
+            <span>欢迎，{{ user.username }}</span>
+            <a href="/">返回前台</a>
+            <a href="/logout/">退出</a>
+        </div>
+    </header>
+    
+    <div class="admin-container">
+        <aside class="admin-sidebar">
+            <ul>
+                <li><a href="/admin/">首页</a></li>
+                <li><a href="/admin/users/">用户管理</a></li>
+                <li><a href="/admin/literatures/">文献管理</a></li>
+                <li><a href="/admin/categories/">分类管理</a></li>
+                <li><a href="/literatures/">返回前台</a></li>
+            </ul>
+        </aside>
+        
+        <main class="admin-content">
+            {% block admin_content %}{% endblock %}
+        </main>
+    </div>
+    
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

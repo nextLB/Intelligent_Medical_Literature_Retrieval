@@ -113,6 +113,27 @@ class SimilarLiterature(models.Model):
         unique_together = ['source', 'similar']
 
 
+class UserProfile(models.Model):
+    """用户扩展信息"""
+    ROLE_CHOICES = [
+        ('user', '普通用户'),
+        ('admin', '管理员'),
+    ]
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
+    role = models.CharField('角色', max_length=20, choices=ROLE_CHOICES, default='user')
+    phone = models.CharField('手机', max_length=20, blank=True)
+    avatar = models.ImageField('头像', upload_to='avatars/', blank=True, null=True)
+    created_at = models.DateTimeField('创建时间', auto_now_add=True)
+    updated_at = models.DateTimeField('更新时间', auto_now=True)
+    
+    class Meta:
+        verbose_name = '用户信息'
+        verbose_name_plural = '用户信息'
+    
+    def __str__(self):
+        return f"{self.user.username} ({self.get_role_display()})"
+
+
 class ModelEvaluation(models.Model):
     """模型评估结果"""
     model_name = models.CharField('模型名称', max_length=100)

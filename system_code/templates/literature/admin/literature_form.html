@@ -1,0 +1,50 @@
+{% extends 'literature/admin/base.html' %}
+
+{% block title %}{% if literature %}编辑文献{% else %}添加文献{% endif %}{% endblock %}
+
+{% block admin_content %}
+<div class="admin-card">
+    <h2>{% if literature %}编辑文献{% else %}添加文献{% endif %}</h2>
+    
+    <form method="post" style="max-width: 600px;">
+        {% csrf_token %}
+        <div class="form-group">
+            <label>标题 *</label>
+            <input type="text" name="title" value="{{ literature.title|default:'' }}" required>
+        </div>
+        <div class="form-group">
+            <label>摘要</label>
+            <textarea name="abstract" rows="6" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">{{ literature.abstract|default:'' }}</textarea>
+        </div>
+        <div class="form-group">
+            <label>关键词</label>
+            <input type="text" name="keywords" value="{{ literature.keywords|default:'' }}">
+        </div>
+        <div class="form-group">
+            <label>作者</label>
+            <input type="text" name="authors" value="{{ literature.authors|default:'' }}">
+        </div>
+        <div class="form-group">
+            <label>期刊</label>
+            <input type="text" name="journal" value="{{ literature.journal|default:'' }}">
+        </div>
+        <div class="form-group">
+            <label>发表年份</label>
+            <input type="number" name="publish_year" value="{{ literature.publish_year|default:'' }}">
+        </div>
+        <div class="form-group">
+            <label>分类</label>
+            <select name="category">
+                <option value="">未分类</option>
+                {% for c in categories %}
+                <option value="{{ c.id }}" {% if literature.category_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div style="display: flex; gap: 10px;">
+            <button type="submit" class="btn btn-primary">保存</button>
+            <button type="button" class="btn" onclick="history.back()">返回</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

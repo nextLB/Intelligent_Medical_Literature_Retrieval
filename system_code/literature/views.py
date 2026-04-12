@@ -7,15 +7,19 @@ import re
 import jieba
 import numpy as np
 from django.db.models import Q
-from django.shortcuts import render
-from django.http import JsonResponse
+from django.shortcuts import render, redirect
+from django.http import JsonResponse, HttpResponseForbidden
 from django.views.decorators.http import require_http_methods
 from django.core.paginator import Paginator
+from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth.decorators import login_required
+from django.contrib.auth.models import User
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.decorators import api_view
+from django.views.decorators.cache import never_cache
 
-from .models import Literature, LiteratureCategory, SearchHistory, SimilarLiterature
+from .models import Literature, LiteratureCategory, SearchHistory, SimilarLiterature, UserProfile
 from .serializers import (
     LiteratureListSerializer, 
     LiteratureDetailSerializer,
@@ -30,6 +34,86 @@ from ml_models.summarizer import get_text_summarizer
 
 import pandas as pd
 import os
+
+
+@never_cache
+def login_view(request):
+    if request.user.is_authenticated:
+        return redirect(get_redirect_url(request.user))
+    
+    if request.method == 'POST':
+        username = request.POST.get('username', '').strip()
+        password = request.POST.get('password', '')
+        
+        if not username or not password:
+            return render(request, 'literature/login.html', {'error': '请输入用户名和密码'})
+        
+        user = authenticate(request, username=username, password=password)
+        if user is not None:
+            login(request, user)
+            return redirect(get_redirect_url(user))
+        else:
+            return render(request, 'literature/login.html', {'error': '用户名或密码错误'})
+    
+    return render(request, 'literature/login.html')
+
+
+def get_redirect_url(user):
+    try:
+        profile = user.profile
+        if profile.role == 'admin':
+            return '/admin/'
+        return '/'
+    except:
+        return '/'
+
+
+@never_cache
+def logout_view(request):
+    logout(request)
+    return redirect('/login/')
+
+
+@never_cache
+def register_view(request):
+    if request.user.is_authenticated:
+        return redirect(get_redirect_url(request.user))
+    
+    if request.method == 'POST':
+        username = request.POST.get('username', '').strip()
+        password = request.POST.get('password', '')
+        password2 = request.POST.get('password2', '')
+        email = request.POST.get('email', '').strip()
+        
+        if not username or not password:
+            return render(request, 'literature/register.html', {'error': '请填写完整信息'})
+        
+        if password != password2:
+            return render(request, 'literature/register.html', {'error': '两次密码不一致'})
+        
+        if len(password) < 6:
+            return render(request, 'literature/register.html', {'error': '密码长度至少6位'})
+        
+        if User.objects.filter(username=username).exists():
+            return render(request, 'literature/register.html', {'error': '用户名已存在'})
+        
+        user = User.objects.create_user(username=username, password=password, email=email)
+        UserProfile.objects.create(user=user, role='user')
+        
+        login(request, user)
+        return redirect('/')
+    
+    return render(request, 'literature/register.html')
+
+
+def login_required_ignore(view_func):
+    def wrapper(request, *args, **kwargs):
+        path = request.path
+        ignore_paths = ['/login/', '/register/', '/api/', '/static/', '/media/']
+        if any(path.startswith(p) for p in ignore_paths):
+            return view_func(request, *args, **kwargs)
+        return login_required(view_func)(request, *args, **kwargs)
+    return wrapper
 
 
 def compute_similarity(text1, text2):
@@ -1472,9 +1556,7 @@ def stop_training(request):
     stop_flag = os.path.join(BASE_DIR, 'checkpoints', 'training_stop.flag')
     
     try:
-        # 如果锁文件存在，说明训练正在进行
         if os.path.exists(lock_file):
-            # 创建停止标志文件
             with open(stop_flag, 'w') as f:
                 f.write(str(time.time()))
             return JsonResponse({'status': 'success', 'message': '已发送停止信号'})
@@ -1482,3 +1564,348 @@ def stop_training(request):
             return JsonResponse({'status': 'info', 'message': '没有正在进行的训练'})
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
+
+
+def is_admin(user):
+    try:
+        return user.profile.role == 'admin'
+    except:
+        return False
+
+
+@login_required
+def admin_index(request):
+    if not is_admin(request.user):
+        return HttpResponseForbidden('权限不足')
+    
+    user_count = User.objects.count()
+    literature_count = Literature.objects.count()
+    category_count = LiteratureCategory.objects.count()
+    search_count = SearchHistory.objects.count()
+    
+    recent_users = User.objects.order_by('-date_joined')[:5]
+    recent_searches = SearchHistory.objects.order_by('-created_at')[:10]
+    
+    context = {
+        'user_count': user_count,
+        'literature_count': literature_count,
+        'category_count': category_count,
+        'search_count': search_count,
+        'recent_users': recent_users,
+        'recent_searches': recent_searches,
+    }
+    return render(request, 'literature/admin/index.html', context)
+
+
+@login_required
+def admin_users(request):
+    if not is_admin(request.user):
+        return HttpResponseForbidden('权限不足')
+    
+    users = User.objects.select_related('profile').order_by('-date_joined')
+    page = int(request.GET.get('page', 1))
+    page_size = 20
+    
+    paginator = Paginator(users, page_size)
+    page_obj = paginator.get_page(page)
+    
+    context = {
+        'users': page_obj.object_list,
+        'page_obj': page_obj,
+        'current_page': page,
+        'total_pages': paginator.num_pages,
+    }
+    return render(request, 'literature/admin/users.html', context)
+
+
+@login_required
+def admin_user_create(request):
+    if not is_admin(request.user):
+        return HttpResponseForbidden('权限不足')
+    
+    if request.method == 'POST':
+        username = request.POST.get('username', '').strip()
+        password = request.POST.get('password', '')
+        email = request.POST.get('email', '').strip()
+        role = request.POST.get('role', 'user')
+        
+        if not username or not password:
+            return JsonResponse({'error': '用户名和密码不能为空'}, status=400)
+        
+        if User.objects.filter(username=username).exists():
+            return JsonResponse({'error': '用户名已存在'}, status=400)
+        
+        user = User.objects.create_user(username=username, password=password, email=email)
+        UserProfile.objects.create(user=user, role=role)
+        
+        return JsonResponse({'status': 'success', 'message': '用户创建成功'})
+    
+    return JsonResponse({'error': '无效请求'}, status=400)
+
+
+@login_required
+def admin_user_edit(request, pk):
+    if not is_admin(request.user):
+        return HttpResponseForbidden('权限不足')
+    
+    try:
+        user = User.objects.get(pk=pk)
+    except User.DoesNotExist:
+        return JsonResponse({'error': '用户不存在'}, status=404)
+    
+    if request.method == 'POST':
+        email = request.POST.get('email', '').strip()
+        role = request.POST.get('role', 'user')
+        is_active = request.POST.get('is_active', 'true') == 'true'
+        
+        user.email = email
+        user.is_active = is_active
+        user.save()
+        
+        if hasattr(user, 'profile'):
+            user.profile.role = role
+            user.profile.save()
+        else:
+            UserProfile.objects.create(user=user, role=role)
+        
+        return JsonResponse({'status': 'success', 'message': '用户更新成功'})
+    
+    return JsonResponse({'error': '无效请求'}, status=400)
+
+
+@login_required
+def admin_user_delete(request, pk):
+    if not is_admin(request.user):
+        return HttpResponseForbidden('权限不足')
+    
+    if request.method == 'POST':
+        try:
+            user = User.objects.get(pk=pk)
+            if user == request.user:
+                return JsonResponse({'error': '不能删除当前用户'}, status=400)
+            user.delete()
+            return JsonResponse({'status': 'success', 'message': '用户删除成功'})
+        except User.DoesNotExist:
+            return JsonResponse({'error': '用户不存在'}, status=404)
+    
+    return JsonResponse({'error': '无效请求'}, status=400)
+
+
+@login_required
+def admin_literatures(request):
+    if not is_admin(request.user):
+        return HttpResponseForbidden('权限不足')
+    
+    categories = LiteratureCategory.objects.all()
+    category_id = request.GET.get('category')
+    query = request.GET.get('q', '').strip()
+    page = int(request.GET.get('page', 1))
+    page_size = 20
+    
+    literatures = Literature.objects.select_related('category').order_by('-created_at')
+    
+    if category_id:
+        literatures = literatures.filter(category_id=category_id)
+    if query:
+        literatures = literatures.filter(
+            Q(title__icontains=query) | Q(abstract__icontains=query) | Q(keywords__icontains=query)
+        )
+    
+    paginator = Paginator(literatures, page_size)
+    page_obj = paginator.get_page(page)
+    
+    context = {
+        'literatures': page_obj.object_list,
+        'page_obj': page_obj,
+        'categories': categories,
+        'current_category': int(category_id) if category_id else None,
+        'query': query,
+        'current_page': page,
+        'total_pages': paginator.num_pages,
+    }
+    return render(request, 'literature/admin/literatures.html', context)
+
+
+@login_required
+def admin_literature_create(request):
+    if not is_admin(request.user):
+        return HttpResponseForbidden('权限不足')
+    
+    categories = LiteratureCategory.objects.all()
+    
+    if request.method == 'POST':
+        title = request.POST.get('title', '').strip()
+        abstract = request.POST.get('abstract', '').strip()
+        keywords = request.POST.get('keywords', '').strip()
+        authors = request.POST.get('authors', '').strip()
+        journal = request.POST.get('journal', '').strip()
+        publish_year = request.POST.get('publish_year')
+        category_id = request.POST.get('category')
+        
+        if not title:
+            return JsonResponse({'error': '标题不能为空'}, status=400)
+        
+        category = None
+        if category_id:
+            category = LiteratureCategory.objects.get(id=category_id)
+        
+        literature = Literature.objects.create(
+            title=title,
+            abstract=abstract,
+            keywords=keywords,
+            authors=authors,
+            journal=journal,
+            publish_year=publish_year,
+            category=category
+        )
+        
+        return JsonResponse({'status': 'success', 'message': '文献创建成功', 'id': literature.id})
+    
+    context = {'categories': categories}
+    return render(request, 'literature/admin/literature_form.html', context)
+
+
+@login_required
+def admin_literature_edit(request, pk):
+    if not is_admin(request.user):
+        return HttpResponseForbidden('权限不足')
+    
+    try:
+        literature = Literature.objects.get(pk=pk)
+    except Literature.DoesNotExist:
+        return JsonResponse({'error': '文献不存在'}, status=404)
+    
+    categories = LiteratureCategory.objects.all()
+    
+    if request.method == 'POST':
+        title = request.POST.get('title', '').strip()
+        abstract = request.POST.get('abstract', '').strip()
+        keywords = request.POST.get('keywords', '').strip()
+        authors = request.POST.get('authors', '').strip()
+        journal = request.POST.get('journal', '').strip()
+        publish_year = request.POST.get('publish_year')
+        category_id = request.POST.get('category')
+        
+        if not title:
+            return JsonResponse({'error': '标题不能为空'}, status=400)
+        
+        literature.title = title
+        literature.abstract = abstract
+        literature.keywords = keywords
+        literature.authors = authors
+        literature.journal = journal
+        literature.publish_year = publish_year
+        
+        if category_id:
+            literature.category = LiteratureCategory.objects.get(id=category_id)
+        else:
+            literature.category = None
+        
+        literature.save()
+        
+        return JsonResponse({'status': 'success', 'message': '文献更新成功'})
+    
+    context = {'literature': literature, 'categories': categories}
+    return render(request, 'literature/admin/literature_form.html', context)
+
+
+@login_required
+def admin_literature_delete(request, pk):
+    if not is_admin(request.user):
+        return HttpResponseForbidden('权限不足')
+    
+    if request.method == 'POST':
+        try:
+            literature = Literature.objects.get(pk=pk)
+            literature.delete()
+            return JsonResponse({'status': 'success', 'message': '文献删除成功'})
+        except Literature.DoesNotExist:
+            return JsonResponse({'error': '文献不存在'}, status=404)
+    
+    return JsonResponse({'error': '无效请求'}, status=400)
+
+
+@login_required
+def admin_categories(request):
+    if not is_admin(request.user):
+        return HttpResponseForbidden('权限不足')
+    
+    categories = LiteratureCategory.objects.all().order_by('id')
+    context = {'categories': categories}
+    return render(request, 'literature/admin/categories.html', context)
+
+
+@login_required
+def admin_category_create(request):
+    if not is_admin(request.user):
+        return HttpResponseForbidden('权限不足')
+    
+    if request.method == 'POST':
+        name = request.POST.get('name', '').strip()
+        name_en = request.POST.get('name_en', '').strip()
+        description = request.POST.get('description', '').strip()
+        
+        if not name:
+            return JsonResponse({'error': '分类名称不能为空'}, status=400)
+        
+        if LiteratureCategory.objects.filter(name=name).exists():
+            return JsonResponse({'error': '分类名称已存在'}, status=400)
+        
+        category = LiteratureCategory.objects.create(
+            name=name,
+            name_en=name_en,
+            description=description
+        )
+        
+        return JsonResponse({'status': 'success', 'message': '分类创建成功', 'id': category.id})
+    
+    return JsonResponse({'error': '无效请求'}, status=400)
+
+
+@login_required
+def admin_category_edit(request, pk):
+    if not is_admin(request.user):
+        return HttpResponseForbidden('权限不足')
+    
+    try:
+        category = LiteratureCategory.objects.get(pk=pk)
+    except LiteratureCategory.DoesNotExist:
+        return JsonResponse({'error': '分类不存在'}, status=404)
+    
+    if request.method == 'POST':
+        name = request.POST.get('name', '').strip()
+        name_en = request.POST.get('name_en', '').strip()
+        description = request.POST.get('description', '').strip()
+        
+        if not name:
+            return JsonResponse({'error': '分类名称不能为空'}, status=400)
+        
+        if LiteratureCategory.objects.exclude(pk=pk).filter(name=name).exists():
+            return JsonResponse({'error': '分类名称已存在'}, status=400)
+        
+        category.name = name
+        category.name_en = name_en
+        category.description = description
+        category.save()
+        
+        return JsonResponse({'status': 'success', 'message': '分类更新成功'})
+    
+    return JsonResponse({'error': '无效请求'}, status=400)
+
+
+@login_required
+def admin_category_delete(request, pk):
+    if not is_admin(request.user):
+        return HttpResponseForbidden('权限不足')
+    
+    if request.method == 'POST':
+        try:
+            category = LiteratureCategory.objects.get(pk=pk)
+            if category.literatures.exists():
+                return JsonResponse({'error': '该分类下有文献，无法删除'}, status=400)
+            category.delete()
+            return JsonResponse({'status': 'success', 'message': '分类删除成功'})
+        except LiteratureCategory.DoesNotExist:
+            return JsonResponse({'error': '分类不存在'}, status=404)
+    
+    return JsonResponse({'error': '无效请求'}, status=400)
