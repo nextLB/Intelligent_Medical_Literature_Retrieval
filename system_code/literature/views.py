@@ -1909,3 +1909,180 @@ def admin_category_delete(request, pk):
             return JsonResponse({'error': '分类不存在'}, status=404)
     
     return JsonResponse({'error': '无效请求'}, status=400)
+
+
+def bert_search_page(request):
+    csv_path = get_csv_path()
+    literature_count = 0
+    if os.path.exists(csv_path):
+        try:
+            df = pd.read_csv(csv_path, encoding='utf-8-sig')
+            literature_count = len(df)
+        except:
+            pass
+    literature_count += Literature.objects.count()
+    
+    context = {
+        'literature_count': literature_count,
+    }
+    return render(request, 'literature/bert_search.html', context)
+
+
+@require_http_methods(["POST"])
+def build_bert_index(request):
+    from ml_models.bert_vector_indexer import get_bert_vector_indexer
+    
+    try:
+        data = json.loads(request.body)
+        limit = int(data.get('limit', 1000))
+    except:
+        limit = 1000
+    
+    indexer = get_bert_vector_indexer()
+    
+    csv_path = get_csv_path()
+    literature_data = []
+    
+    for doc_id, doc_info in PDF_DOCUMENTS.items():
+        literature_data.append({
+            'id': doc_id,
+            'title': doc_info['title'],
+            'abstract': doc_info['abstract'],
+            'keywords': doc_info.get('keywords', ''),
+            'authors': doc_info.get('authors', ''),
+            'journal': doc_info.get('journal', ''),
+            'publish_year': doc_info.get('publish_year', 0),
+            'pdf_url': doc_info.get('pdf_url', ''),
+            'category': doc_info.get('category', ''),
+            'source': 'pdf'
+        })
+    
+    if os.path.exists(csv_path):
+        try:
+            df = pd.read_csv(csv_path, encoding='utf-8-sig')
+            df = df.head(limit)
+            
+            for idx, row in df.iterrows():
+                title = str(row.get('title', ''))
+                abstract = str(row.get('abstract', ''))
+                if title and len(title) > 0:
+                    pdf_url = find_pdf_for_literature(title)
+                    literature_data.append({
+                        'id': idx,
+                        'title': title,
+                        'abstract': abstract,
+                        'keywords': str(row.get('keywords', '')),
+                        'authors': str(row.get('authors', '')),
+                        'journal': str(row.get('journal', '')),
+                        'publish_year': int(row.get('year', 0)) if pd.notna(row.get('year')) else 0,
+                        'pdf_url': pdf_url,
+                        'category': str(row.get('topic', '')),
+                        'source': 'csv'
+                    })
+        except Exception as e:
+            return JsonResponse({'error': f'读取数据失败: {str(e)}'}, status=500)
+    
+    try:
+        for lit in Literature.objects.all()[:limit]:
+            literature_data.append({
+                'id': lit.id,
+                'title': lit.title,
+                'abstract': lit.abstract or '',
+                'keywords': lit.keywords or '',
+                'authors': lit.authors or '',
+                'journal': lit.journal or '',
+                'publish_year': lit.publish_year or 0,
+                'pdf_url': lit.pdf_file.url if lit.pdf_file else '',
+                'category': lit.category.name if lit.category else '',
+                'source': 'db'
+            })
+    except:
+        pass
+    
+    if not literature_data:
+        return JsonResponse({'error': '没有可索引的文献'}, status=400)
+    
+    count = indexer.build_index(literature_data)
+    
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    index_file = os.path.join(base_dir, 'checkpoints', 'bert_vector_index.pkl')
+    os.makedirs(os.path.dirname(index_file), exist_ok=True)
+    indexer.save_index(index_file)
+    
+    return JsonResponse({
+        'status': 'success',
+        'message': f'索引构建完成',
+        'index_count': count,
+        'index_size': indexer.get_index_size()
+    })
+
+
+@require_http_methods(["POST"])
+def bert_search(request):
+    from ml_models.bert_vector_indexer import get_bert_vector_indexer
+    
+    try:
+        data = json.loads(request.body)
+        query = data.get('query', '')
+        top_k = int(data.get('top_k', 10))
+    except:
+        query = request.POST.get('query', '')
+        top_k = int(request.POST.get('top_k', 10))
+    
+    if not query:
+        return JsonResponse({'error': '请输入搜索内容'}, status=400)
+    
+    indexer = get_bert_vector_indexer()
+    
+    if indexer.get_index_size() == 0:
+        return JsonResponse({'error': '向量索引未构建，请先构建索引'}, status=400)
+    
+    results = indexer.search_by_text(query, top_k=top_k)
+    
+    return JsonResponse({
+        'query': query,
+        'total': len(results),
+        'results': results
+    })
+
+
+@require_http_methods(["POST"])
+def bert_find_similar(request):
+    from ml_models.bert_vector_indexer import get_bert_vector_indexer
+    
+    try:
+        data = json.loads(request.body)
+        literature_id = data.get('literature_id')
+        top_k = int(data.get('top_k', 10))
+    except:
+        literature_id = request.POST.get('literature_id')
+        top_k = int(request.POST.get('top_k', 10))
+    
+    if literature_id is None:
+        return JsonResponse({'error': '请提供文献ID'}, status=400)
+    
+    indexer = get_bert_vector_indexer()
+    
+    if indexer.get_index_size() == 0:
+        return JsonResponse({'error': '向量索引未构建，请先构建索引'}, status=400)
+    
+    results = indexer.find_similar_by_id(literature_id, top_k=top_k)
+    
+    return JsonResponse({
+        'literature_id': literature_id,
+        'total': len(results),
+        'similar_literatures': results
+    })
+
+
+@require_http_methods(["GET"])
+def get_bert_index_status(request):
+    from ml_models.bert_vector_indexer import get_bert_vector_indexer
+    
+    indexer = get_bert_vector_indexer()
+    index_size = indexer.get_index_size()
+    
+    return JsonResponse({
+        'index_size': index_size,
+        'status': 'ready' if index_size > 0 else 'not_built'
+    })

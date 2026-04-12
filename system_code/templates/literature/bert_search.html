@@ -1,0 +1,538 @@
+{% extends 'literature/base.html' %}
+
+{% block title %}基于BERT的语义检索 - 医学文献智能检索系统{% endblock %}
+
+{% block extra_css %}
+<style>
+.bert-search-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+.search-header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+.search-header h1 {
+    color: #333;
+    margin-bottom: 10px;
+}
+.search-header p {
+    color: #666;
+    font-size: 14px;
+}
+.index-status {
+    display: inline-block;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 14px;
+    margin-top: 10px;
+}
+.index-status.ready {
+    background: #e8f5e9;
+    color: #2e7d32;
+}
+.index-status.not-ready {
+    background: #fff3e0;
+    color: #ef6c00;
+}
+.search-box-section {
+    background: #fff;
+    padding: 30px;
+    border-radius: 12px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+    margin-bottom: 20px;
+}
+.search-input-group {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+.search-input-group input {
+    flex: 1;
+    padding: 14px 20px;
+    font-size: 16px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    transition: border-color 0.3s;
+}
+.search-input-group input:focus {
+    outline: none;
+    border-color: #667eea;
+}
+.search-input-group select {
+    padding: 14px 20px;
+    font-size: 16px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    background: #fff;
+    cursor: pointer;
+}
+.search-btn {
+    padding: 14px 30px;
+    font-size: 16px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+.search-btn:hover {
+    transform: translateY(-2px);
+}
+.search-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+.search-tips {
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 8px;
+    margin-top: 15px;
+}
+.search-tips h4 {
+    margin: 0 0 10px 0;
+    color: #333;
+}
+.search-tips ul {
+    margin: 0;
+    padding-left: 20px;
+    color: #666;
+}
+.search-tips li {
+    margin: 5px 0;
+}
+.index-section {
+    background: #fff;
+    padding: 25px;
+    border-radius: 12px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+    margin-bottom: 20px;
+}
+.index-section h2 {
+    margin: 0 0 15px 0;
+    color: #333;
+    font-size: 20px;
+}
+.index-controls {
+    display: flex;
+    gap: 15px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+.index-controls input {
+    padding: 10px 15px;
+    font-size: 14px;
+    border: 2px solid #e0e0e0;
+    border-radius: 6px;
+    width: 120px;
+}
+.index-info {
+    flex: 1;
+    color: #666;
+    font-size: 14px;
+}
+.results-section {
+    background: #fff;
+    padding: 25px;
+    border-radius: 12px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+}
+.results-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid #eee;
+}
+.results-header h2 {
+    margin: 0;
+    color: #333;
+}
+.results-count {
+    color: #666;
+    font-size: 14px;
+}
+.result-item {
+    padding: 20px;
+    border: 1px solid #eee;
+    border-radius: 8px;
+    margin-bottom: 15px;
+    transition: box-shadow 0.3s;
+}
+.result-item:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+.result-title {
+    font-size: 18px;
+    color: #333;
+    margin-bottom: 10px;
+}
+.result-title a {
+    color: #667eea;
+    text-decoration: none;
+}
+.result-title a:hover {
+    text-decoration: underline;
+}
+.result-meta {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 10px;
+    font-size: 13px;
+    color: #888;
+    flex-wrap: wrap;
+}
+.result-meta span {
+    display: inline-flex;
+    align-items: center;
+}
+.similarity-score {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 13px;
+    font-weight: bold;
+}
+.category-tag {
+    background: #e3f2fd;
+    color: #1565c0;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+}
+.result-abstract {
+    color: #666;
+    font-size: 14px;
+    line-height: 1.6;
+    margin: 10px 0;
+}
+.result-keywords {
+    color: #888;
+    font-size: 13px;
+    margin-top: 8px;
+}
+.empty-message {
+    text-align: center;
+    padding: 40px;
+    color: #999;
+}
+.loading {
+    text-align: center;
+    padding: 40px;
+    color: #667eea;
+}
+.error {
+    text-align: center;
+    padding: 20px;
+    background: #ffebee;
+    color: #c62828;
+    border-radius: 8px;
+}
+.action-buttons {
+    margin-top: 15px;
+    display: flex;
+    gap: 10px;
+}
+.action-buttons a,
+.action-buttons button {
+    padding: 8px 16px;
+    font-size: 13px;
+    border: 1px solid #e0e0e0;
+    background: #fff;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+.action-buttons a:hover,
+.action-buttons button:hover {
+    background: #f5f5f5;
+    border-color: #667eea;
+    color: #667eea;
+}
+.pdf-download {
+    background: #e8f5e9 !important;
+    border-color: #4caf50 !important;
+    color: #2e7d32 !important;
+}
+.pdf-download:hover {
+    background: #c8e6c9 !important;
+}
+.progress-info {
+    margin-top: 10px;
+    padding: 15px;
+    background: #e3f2fd;
+    border-radius: 8px;
+    color: #1565c0;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="bert-search-container">
+    <div class="search-header">
+        <h1>基于BERT的语义检索</h1>
+        <p>利用深度学习模型理解语义，进行精准的相似文献推荐</p>
+        <div id="indexStatus" class="index-status not-ready">
+            <span>索引状态: 未构建</span>
+        </div>
+    </div>
+    
+    <div class="index-section">
+        <h2>向量索引管理</h2>
+        <div class="index-controls">
+            <label>索引文献数量:</label>
+            <input type="number" id="indexLimit" value="2000" min="1" max="5000">
+            <button onclick="buildIndex()" class="search-btn">构建索引</button>
+            <div class="index-info">
+                当前索引文献数: <strong id="currentIndexSize">0</strong> | 
+                总文献数: <strong>{{ literature_count }}</strong>
+            </div>
+        </div>
+        <div id="buildProgress" class="progress-info" style="display: none;">
+            正在构建BERT向量索引，请稍候...
+        </div>
+    </div>
+    
+    <div class="search-box-section">
+        <div class="search-input-group">
+            <input type="text" id="searchQuery" placeholder="输入您想了解的内容，例如：'造血干细胞移植治疗地中海贫血'">
+            <select id="topK">
+                <option value="5">返回5条</option>
+                <option value="10" selected>返回10条</option>
+                <option value="15">返回15条</option>
+                <option value="20">返回20条</option>
+            </select>
+            <button onclick="performSearch()" class="search-btn" id="searchBtn">语义检索</button>
+        </div>
+        
+        <div class="search-tips">
+            <h4>功能说明：</h4>
+            <ul>
+                <li><strong>语义理解：</strong>不同于关键词匹配，系统能够理解查询的语义含义</li>
+                <li><strong>语义向量：</strong>基于BERT预训练模型，将文本转换为768维语义向量</li>
+                <li><strong>余弦相似度：</strong>通过计算向量间的余弦相似度找到相关内容</li>
+                <li><strong>向量化计算：</strong>使用NumPy批量计算，确保实时响应能力</li>
+            </ul>
+        </div>
+    </div>
+    
+    <div class="results-section" id="resultsSection" style="display: none;">
+        <div class="results-header">
+            <h2>检索结果</h2>
+            <span id="resultsCount" class="results-count"></span>
+        </div>
+        <div id="resultsList"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentResults = [];
+
+function init() {
+    checkIndexStatus();
+}
+
+function checkIndexStatus() {
+    fetch('/api/bert-index-status/', {
+        method: 'GET',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        const statusEl = document.getElementById('indexStatus');
+        const sizeEl = document.getElementById('currentIndexSize');
+        
+        sizeEl.textContent = data.index_size || 0;
+        
+        if (data.status === 'ready' && data.index_size > 0) {
+            statusEl.className = 'index-status ready';
+            statusEl.innerHTML = '<span>✓ 索引已就绪 (' + data.index_size + ' 条)</span>';
+        } else {
+            statusEl.className = 'index-status not-ready';
+            statusEl.innerHTML = '<span>索引状态: 未构建</span>';
+        }
+    })
+    .catch(error => {
+        console.error('检查索引状态失败:', error);
+    });
+}
+
+function buildIndex() {
+    const limit = parseInt(document.getElementById('indexLimit').value);
+    const progressEl = document.getElementById('buildProgress');
+    
+    progressEl.style.display = 'block';
+    progressEl.textContent = '正在构建BERT向量索引，请稍候...';
+    
+    fetch('/api/bert-index/build/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify({ limit: limit })
+    })
+    .then(response => response.json())
+    .then(data => {
+        progressEl.style.display = 'none';
+        
+        if (data.error) {
+            alert('索引构建失败: ' + data.error);
+        } else {
+            alert('索引构建成功! 共索引 ' + data.index_size + ' 条文献');
+            checkIndexStatus();
+        }
+    })
+    .catch(error => {
+        progressEl.style.display = 'none';
+        alert('索引构建失败: ' + error);
+    });
+}
+
+function performSearch() {
+    const query = document.getElementById('searchQuery').value.trim();
+    const topK = parseInt(document.getElementById('topK').value);
+    const searchBtn = document.getElementById('searchBtn');
+    
+    if (!query) {
+        alert('请输入搜索内容');
+        return;
+    }
+    
+    const statusEl = document.getElementById('indexStatus');
+    if (statusEl.className.indexOf('not-ready') !== -1) {
+        alert('请先构建向量索引');
+        return;
+    }
+    
+    searchBtn.disabled = true;
+    searchBtn.textContent = '检索中...';
+    
+    const resultsSection = document.getElementById('resultsSection');
+    resultsSection.style.display = 'block';
+    document.getElementById('resultsList').innerHTML = '<div class="loading">正在进行语义检索...</div>';
+    
+    fetch('/api/bert-search/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify({ query: query, top_k: topK })
+    })
+    .then(response => response.json())
+    .then(data => {
+        searchBtn.disabled = false;
+        searchBtn.textContent = '语义检索';
+        
+        if (data.error) {
+            document.getElementById('resultsList').innerHTML = '<div class="error">' + data.error + '</div>';
+            return;
+        }
+        
+        document.getElementById('resultsCount').textContent = '(共 ' + data.total + ' 条结果)';
+        currentResults = data.results;
+        displayResults(data.results);
+    })
+    .catch(error => {
+        searchBtn.disabled = false;
+        searchBtn.textContent = '语义检索';
+        document.getElementById('resultsList').innerHTML = '<div class="error">检索失败: ' + error + '</div>';
+    });
+}
+
+function escapeHtml(s) {
+    if (s == null || s === '') return '';
+    const div = document.createElement('div');
+    div.textContent = s;
+    return div.innerHTML;
+}
+
+function displayResults(results) {
+    const resultsList = document.getElementById('resultsList');
+    
+    if (!results || results.length === 0) {
+        resultsList.innerHTML = '<div class="empty-message">未找到相关文献</div>';
+        return;
+    }
+    
+    let html = '';
+    results.forEach((lit, idx) => {
+        const litId = lit.literature_id;
+        const pdfUrl = lit.pdf_url;
+        const hasPdf = pdfUrl && pdfUrl.length > 0;
+        
+        let detailUrl = '#';
+        if (lit.source === 'pdf') {
+            detailUrl = '/literature/' + litId + '/';
+        } else if (lit.source === 'csv') {
+            detailUrl = '/literature/' + litId + '/';
+        } else if (lit.source === 'db') {
+            detailUrl = '/literature/' + litId + '/';
+        }
+        
+        let actionsHtml = '<div class="action-buttons">';
+        actionsHtml += '<a href="' + detailUrl + '">查看详情</a>';
+        if (hasPdf) {
+            actionsHtml += '<a href="' + pdfUrl + '" class="pdf-download" target="_blank">下载PDF</a>';
+        }
+        actionsHtml += '</div>';
+        
+        html += `
+        <div class="result-item">
+            <h3 class="result-title">
+                <a href="${detailUrl}">${escapeHtml(lit.title)}</a>
+            </h3>
+            <div class="result-meta">
+                <span class="similarity-score">相似度: ${(lit.similarity * 100).toFixed(2)}%</span>
+                ${lit.category ? `<span class="category-tag">${escapeHtml(lit.category)}</span>` : ''}
+                ${lit.journal ? `<span>期刊: ${escapeHtml(lit.journal)}</span>` : ''}
+                ${lit.publish_year ? `<span>年份: ${lit.publish_year}</span>` : ''}
+                ${lit.authors ? `<span>作者: ${escapeHtml(lit.authors)}</span>` : ''}
+            </div>
+            <p class="result-abstract">${escapeHtml(lit.abstract || '暂无摘要')}</p>
+            ${lit.keywords ? `<div class="result-keywords">关键词: ${escapeHtml(lit.keywords)}</div>` : ''}
+            ${actionsHtml}
+        </div>
+        `;
+    });
+    
+    resultsList.innerHTML = html;
+}
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+document.getElementById('searchQuery').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') {
+        performSearch();
+    }
+});
+
+window.onload = init;
+</script>
+{% endblock %}

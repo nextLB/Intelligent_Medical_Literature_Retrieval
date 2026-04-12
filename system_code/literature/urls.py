@@ -42,4 +42,10 @@ urlpatterns = [
     path('admin/categories/create/', views.admin_category_create, name='admin_category_create'),
     path('admin/categories/<int:pk>/edit/', views.admin_category_edit, name='admin_category_edit'),
     path('admin/categories/<int:pk>/delete/', views.admin_category_delete, name='admin_category_delete'),
+    
+    path('bert-search/', views.bert_search_page, name='bert_search_page'),
+    path('api/bert-index/build/', views.build_bert_index, name='build_bert_index'),
+    path('api/bert-search/', views.bert_search, name='bert_search'),
+    path('api/bert-similar/', views.bert_find_similar, name='bert_find_similar'),
+    path('api/bert-index-status/', views.get_bert_index_status, name='bert_index_status'),
 ]
