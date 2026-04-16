@@ -57,7 +57,7 @@
     
     {% if total_pages > 1 %}
     <div class="pagination">
-        {% for p in total_pages|range %}
+        {% for p in page_range %}
         <a href="?page={{ p }}" {% if p == current_page %}class="active"{% endif %}>{{ p }}</a>
         {% endfor %}
     </div>
@@ -130,8 +130,8 @@ function closeModal() {
 document.getElementById('userForm').onsubmit = function(e) {
     e.preventDefault();
     const formData = new FormData(this);
-    const url = currentEditId ? `/admin/users/${currentEditId}/edit/` : '/admin/users/create/';
-    
+    const url = currentEditId ? `/manager/users/${currentEditId}/edit/` : '/manager/users/create/';
+
     fetch(url, {
         method: 'POST',
         body: formData
@@ -146,7 +146,7 @@ document.getElementById('userForm').onsubmit = function(e) {
 
 function deleteUser(id, username) {
     if (!confirm(`确定要删除用户 "${username}" 吗？`)) return;
-    fetch(`/admin/users/${id}/delete/`, { method: 'POST' })
+    fetch(`/manager/users/${id}/delete/`, { method: 'POST' })
         .then(r => r.json())
         .then(data => {
             if (data.error) alert(data.error);

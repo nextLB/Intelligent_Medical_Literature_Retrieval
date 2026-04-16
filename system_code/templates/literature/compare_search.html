@@ -1,0 +1,748 @@
+{% extends 'literature/base.html' %}
+
+{% block title %}对比检索 - 医学文献智能检索系统{% endblock %}
+
+{% block extra_css %}
+<style>
+.compare-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 20px;
+}
+.page-header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+.page-header h1 {
+    color: #333;
+    margin-bottom: 10px;
+}
+.page-header p {
+    color: #666;
+    font-size: 14px;
+}
+.search-section {
+    background: #fff;
+    padding: 30px;
+    border-radius: 12px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+    margin-bottom: 20px;
+}
+.search-box {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+.search-box input {
+    flex: 1;
+    padding: 14px 20px;
+    font-size: 16px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+}
+.search-box input:focus {
+    outline: none;
+    border-color: #667eea;
+}
+.search-box select {
+    padding: 14px 20px;
+    font-size: 16px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    background: #fff;
+}
+.search-btn {
+    padding: 14px 40px;
+    font-size: 16px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: transform 0.2s;
+}
+.search-btn:hover {
+    transform: scale(1.02);
+}
+.search-btn:disabled {
+    background: #ccc;
+    cursor: not-allowed;
+}
+.loading {
+    text-align: center;
+    padding: 40px;
+    color: #666;
+}
+.comparison-results {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-top: 20px;
+}
+.method-column {
+    background: #fff;
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+}
+.method-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    padding-bottom: 15px;
+    border-bottom: 2px solid #f0f0f0;
+}
+.method-header h3 {
+    margin: 0;
+    color: #333;
+}
+.method-stats {
+    display: flex;
+    gap: 20px;
+    font-size: 14px;
+}
+.stat-item {
+    background: #f5f5f5;
+    padding: 5px 12px;
+    border-radius: 15px;
+}
+.stat-item.time {
+    background: #e3f2fd;
+    color: #1976d2;
+}
+.stat-item.count {
+    background: #e8f5e9;
+    color: #388e3c;
+}
+.result-list {
+    max-height: 400px;
+    overflow-y: auto;
+}
+.result-item {
+    display: flex;
+    gap: 10px;
+    padding: 10px;
+    border-bottom: 1px solid #f0f0f0;
+    font-size: 14px;
+}
+.result-item:hover {
+    background: #f9f9f9;
+}
+.result-rank {
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #667eea;
+    color: white;
+    border-radius: 50%;
+    font-weight: bold;
+    font-size: 12px;
+    flex-shrink: 0;
+}
+.result-info {
+    flex: 1;
+}
+.result-title {
+    color: #333;
+    margin-bottom: 4px;
+}
+.result-similarity {
+    color: #888;
+    font-size: 12px;
+}
+.summary-comparison {
+    grid-column: 1 / -1;
+    background: #fff;
+    padding: 25px;
+    border-radius: 12px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+}
+.summary-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 20px;
+    margin-top: 20px;
+}
+.summary-card {
+    padding: 20px;
+    border-radius: 10px;
+    text-align: center;
+}
+.summary-card.blue {
+    background: #e3f2fd;
+}
+.summary-card.green {
+    background: #e8f5e9;
+}
+.summary-card.orange {
+    background: #fff3e0;
+}
+.summary-card.purple {
+    background: #f3e5f5;
+}
+.summary-card h4 {
+    margin: 0 0 10px 0;
+    font-size: 14px;
+    color: #666;
+}
+.summary-card .value {
+    font-size: 28px;
+    font-weight: bold;
+    color: #333;
+}
+.summary-card .value.blue { color: #1976d2; }
+.summary-card .value.green { color: #388e3c; }
+.summary-card .value.orange { color: #ef6c00; }
+.summary-card .value.purple { color: #7b1fa2; }
+.empty-state {
+    text-align: center;
+    padding: 40px;
+    color: #999;
+}
+.error-message {
+    background: #ffebee;
+    color: #c62828;
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+.intro-text {
+    background: #f5f5f5;
+    padding: 20px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    line-height: 1.8;
+}
+.intro-text h3 {
+    margin-top: 0;
+    color: #333;
+}
+.intro-text ul {
+    margin: 10px 0 0 0;
+    padding-left: 20px;
+}
+.intro-text li {
+    margin-bottom: 8px;
+}
+.progress-message {
+    background: #f5f5f5;
+    padding: 10px 15px;
+    border-radius: 8px;
+    margin-top: 10px;
+    font-size: 14px;
+    color: #666;
+    border-left: 4px solid #667eea;
+}
+.status-message {
+    padding: 5px 0;
+    border-bottom: 1px solid #f0f0f0;
+}
+.status-message:last-child {
+    border-bottom: none;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="compare-container">
+    <div class="page-header">
+        <h1>检索算法对比分析</h1>
+        <p>对比关键词检索与BERT语义检索的性能差异</p>
+    </div>
+
+    <div class="search-section">
+        <div class="intro-text">
+            <h3>什么是对比检索？</h3>
+            <ul>
+                <li><strong>关键词检索：</strong>基于文本匹配的精确检索，匹配标题、摘要、关键词中的文字</li>
+                <li><strong>BERT语义检索：</strong>基于深度学习模型的语义理解，Returns的语义相关的文献</li>
+                <li><strong>对比分析：</strong>比较两种方法的检索结果、速度、召回率等指标</li>
+            </ul>
+        </div>
+        <div class="search-box">
+            <input type="text" id="queryInput" placeholder="输入查询词，如：肺癌治疗方法、糖尿病饮食..." value="">
+            <select id="topK">
+                <option value="10">返回Top 10</option>
+                <option value="20" selected>返回Top 20</option>
+                <option value="50">返回Top 50</option>
+            </select>
+            <button class="search-btn" onclick="runComparison()">开始对比</button>
+        </div>
+
+        <div style="margin-top: 15px; display: flex; gap: 10px; align-items: center;">
+            <div style="font-size: 14px; color: #666;">
+                BERT索引状态: <span id="indexStatusText">检测中...</span>
+            </div>
+            <button id="buildIndexBtn" class="search-btn" onclick="buildBertIndex()" style="padding: 8px 15px; font-size: 14px; background: #4CAF50;">构建BERT索引</button>
+        </div>
+
+        <div id="indexProgressSection" style="display: none; margin-top: 20px;">
+            <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                <div style="flex: 1; height: 8px; background: #f0f0f0; border-radius: 4px; overflow: hidden;">
+                    <div id="indexProgressBar" style="width: 0%; height: 100%; background: linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%); transition: width 0.3s;"></div>
+                </div>
+                <div id="indexProgressText" style="margin-left: 15px; font-size: 14px; color: #666;">0%</div>
+            </div>
+            <div id="indexStatusMessages" style="font-size: 14px; color: #666; line-height: 1.6; max-height: 100px; overflow-y: auto;">
+                <!-- 索引构建状态消息将在这里显示 -->
+            </div>
+        </div>
+
+        <div id="progressSection" style="display: none; margin-top: 20px;">
+            <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                <div style="flex: 1; height: 8px; background: #f0f0f0; border-radius: 4px; overflow: hidden;">
+                    <div id="progressBar" style="width: 0%; height: 100%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); transition: width 0.3s;"></div>
+                </div>
+                <div id="progressText" style="margin-left: 15px; font-size: 14px; color: #666;">0%</div>
+            </div>
+            <div id="statusMessages" style="font-size: 14px; color: #666; line-height: 1.6; max-height: 100px; overflow-y: auto;">
+                <!-- 对比检索状态消息将在这里显示 -->
+            </div>
+        </div>
+    </div>
+
+    <div id="results" class="comparison-results" style="display: none;">
+        <div class="method-column">
+            <div class="method-header">
+                <h3>关键词检索</h3>
+                <div class="method-stats">
+                    <span class="stat-item time" id="keywordTime"></span>
+                    <span class="stat-item count" id="keywordCount"></span>
+                </div>
+            </div>
+            <div id="keywordResults" class="result-list"></div>
+        </div>
+
+        <div class="method-column">
+            <div class="method-header">
+                <h3>BERT语义检索</h3>
+                <div class="method-stats">
+                    <span class="stat-item time" id="bertTime"></span>
+                    <span class="stat-item count" id="bertCount"></span>
+                </div>
+            </div>
+            <div id="bertResults" class="result-list"></div>
+        </div>
+
+        <div class="summary-comparison">
+            <h3>对比分析结果</h3>
+            <div class="summary-grid">
+                <div class="summary-card blue">
+                    <h4>共同结果数</h4>
+                    <div class="value blue" id="commonCount">-</div>
+                </div>
+                <div class="summary-card green">
+                    <h4>BERT独有结果</h4>
+                    <div class="value green" id="bertOnlyCount">-</div>
+                </div>
+                <div class="summary-card orange">
+                    <h4>关键词独有结果</h4>
+                    <div class="value orange" id="keywordOnlyCount">-</div>
+                </div>
+                <div class="summary-card purple">
+                    <h4>结果重叠率</h4>
+                    <div class="value purple" id="overlapRate">-</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let comparisonResults = {
+    keyword: {results: [], time: 0, count: 0},
+    bert: {results: [], time: 0, count: 0},
+    comparison: {}
+};
+
+// 页面加载时检查BERT索引状态
+document.addEventListener('DOMContentLoaded', function() {
+    checkBertIndexStatus();
+});
+
+// 检查BERT索引状态
+async function checkBertIndexStatus() {
+    try {
+        const response = await fetch('/api/bert-index-status/');
+        const data = await response.json();
+
+        const statusText = document.getElementById('indexStatusText');
+        const buildBtn = document.getElementById('buildIndexBtn');
+
+        if (data.index_size > 0) {
+            statusText.innerHTML = `<span style="color: #4CAF50; font-weight: bold;">已构建 (${data.index_size}个文档)</span>`;
+            buildBtn.textContent = '重建索引';
+            buildBtn.style.background = '#FF9800';
+        } else {
+            statusText.innerHTML = '<span style="color: #F44336;">未构建</span>';
+            buildBtn.textContent = '构建BERT索引';
+            buildBtn.style.background = '#4CAF50';
+        }
+    } catch (error) {
+        document.getElementById('indexStatusText').innerHTML = '<span style="color: #F44336;">检测失败</span>';
+    }
+}
+
+// 构建BERT索引
+async function buildBertIndex() {
+    const buildBtn = document.getElementById('buildIndexBtn');
+    const indexProgressSection = document.getElementById('indexProgressSection');
+
+    // 禁用按钮
+    buildBtn.disabled = true;
+    buildBtn.textContent = '正在构建...';
+
+    // 显示进度区域
+    indexProgressSection.style.display = 'block';
+    updateIndexProgress(0, '开始构建BERT向量索引...');
+
+    try {
+        const response = await fetch('/api/bert-index/build/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({ limit: 1000 })
+        });
+
+        if (!response.ok) {
+            throw new Error('构建请求失败');
+        }
+
+        const data = await response.json();
+
+        if (data.error) {
+            throw new Error(data.error);
+        }
+
+        updateIndexProgress(100, `索引构建完成！共索引 ${data.index_count || 0} 个文档`);
+
+        // 等待2秒后更新状态
+        setTimeout(() => {
+            checkBertIndexStatus();
+            indexProgressSection.style.display = 'none';
+            buildBtn.disabled = false;
+            buildBtn.textContent = '重建索引';
+            buildBtn.style.background = '#FF9800';
+        }, 2000);
+
+    } catch (error) {
+        updateIndexProgress(0, `构建失败: ${error.message}`);
+        buildBtn.disabled = false;
+        buildBtn.textContent = '构建BERT索引';
+        buildBtn.style.background = '#4CAF50';
+
+        // 5秒后隐藏进度区域
+        setTimeout(() => {
+            indexProgressSection.style.display = 'none';
+        }, 5000);
+    }
+}
+
+// 更新索引构建进度
+function updateIndexProgress(percent, message) {
+    const progressBar = document.getElementById('indexProgressBar');
+    const progressText = document.getElementById('indexProgressText');
+    const statusMessages = document.getElementById('indexStatusMessages');
+
+    progressBar.style.width = percent + '%';
+    progressText.textContent = percent + '%';
+
+    const timestamp = new Date().toLocaleTimeString();
+    const messageDiv = document.createElement('div');
+    messageDiv.innerHTML = `<span style="color: #888;">[${timestamp}]</span> ${message}`;
+    statusMessages.insertBefore(messageDiv, statusMessages.firstChild);
+
+    // 保持消息区域不超过5条
+    while (statusMessages.children.length > 5) {
+        statusMessages.removeChild(statusMessages.lastChild);
+    }
+}
+
+async function runComparison() {
+    const query = document.getElementById('queryInput').value.trim();
+    const topK = parseInt(document.getElementById('topK').value);
+
+    if (!query) {
+        alert('请输入查询词');
+        return;
+    }
+
+    // 重置结果区域
+    const resultsDiv = document.getElementById('results');
+    resultsDiv.style.display = 'none';
+
+    // 显示进度区域
+    const progressSection = document.getElementById('progressSection');
+    progressSection.style.display = 'block';
+    updateProgress(0, '准备开始对比检索...');
+
+    // 清空之前的比较结果
+    comparisonResults = {
+        keyword: {results: [], time: 0, count: 0},
+        bert: {results: [], time: 0, count: 0},
+        comparison: {}
+    };
+
+    try {
+        // 步骤1: 关键词检索 (占总进度30%)
+        updateProgress(10, '正在进行关键词检索...');
+        const keywordStartTime = Date.now();
+        const keywordData = await performKeywordSearch(query, topK);
+        const keywordTime = Date.now() - keywordStartTime;
+
+        comparisonResults.keyword = {
+            results: keywordData.results || [],
+            time: keywordTime,
+            count: keywordData.total || 0
+        };
+
+        // 立即显示关键词检索结果
+        updateProgress(30, '关键词检索完成，正在进行BERT语义检索...');
+        displayPartialResults('keyword');
+
+        // 步骤2: BERT语义检索 (占总进度60%)
+        updateProgress(40, '正在构建BERT索引或计算语义相似度...');
+        const bertStartTime = Date.now();
+        const bertData = await performBertSearch(query, topK);
+        const bertTime = Date.now() - bertStartTime;
+
+        comparisonResults.bert = {
+            results: bertData.results || [],
+            time: bertTime,
+            count: bertData.total || 0
+        };
+
+        // 立即显示BERT检索结果
+        updateProgress(80, 'BERT语义检索完成，正在进行对比分析...');
+        displayPartialResults('bert');
+
+        // 步骤3: 对比分析 (占总进度20%)
+        updateProgress(90, '正在分析检索结果差异...');
+
+        // 计算对比分析结果
+        const keywordTitles = new Set(comparisonResults.keyword.results.map(r => r.title));
+        const bertTitles = new Set(comparisonResults.bert.results.map(r => r.title));
+        const commonResults = new Set([...keywordTitles].filter(x => bertTitles.has(x)));
+        const onlyKeyword = new Set([...keywordTitles].filter(x => !bertTitles.has(x)));
+        const onlyBert = new Set([...bertTitles].filter(x => !keywordTitles.has(x)));
+
+        comparisonResults.comparison = {
+            common_count: commonResults.size,
+            only_keyword_count: onlyKeyword.size,
+            only_bert_count: onlyBert.size,
+            overlap_rate: Math.round(commonResults.size / Math.max(keywordTitles.size + bertTitles.size - commonResults.size, 1) * 100)
+        };
+
+        // 完成
+        updateProgress(100, '对比分析完成！');
+
+        // 显示最终结果
+        setTimeout(() => {
+            displayFinalResults();
+            progressSection.style.display = 'none';
+            resultsDiv.style.display = 'grid';
+        }, 500);
+
+    } catch (error) {
+        updateProgress(0, '检索过程中发生错误: ' + error.message);
+        resultsDiv.innerHTML = '<div class="error-message">检索失败: ' + error.message + '</div>';
+        resultsDiv.style.display = 'grid';
+        progressSection.style.display = 'none';
+    }
+}
+
+// 执行关键词检索
+async function performKeywordSearch(query, topK) {
+    const response = await fetch('/api/search/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify({ query: query, page: 1 })
+    });
+
+    if (!response.ok) {
+        throw new Error('关键词检索失败');
+    }
+
+    const data = await response.json();
+
+    // 转换结果为标准格式
+    const results = data.results ? data.results.slice(0, topK).map((item, index) => ({
+        id: item.id,
+        rank: index + 1,
+        title: item.title || '无标题',
+        similarity: 1.0 - (index * 0.01)
+    })) : [];
+
+    return {
+        results: results,
+        total: data.total || 0
+    };
+}
+
+// 执行BERT语义检索
+async function performBertSearch(query, topK) {
+    // 先检查BERT索引状态
+    const statusResponse = await fetch('/api/bert-index-status/');
+    const statusData = await statusResponse.json();
+
+    if (statusData.index_size > 0) {
+        // 使用BERT索引搜索
+        const response = await fetch('/api/bert-search/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({ query: query, top_k: topK })
+        });
+
+        if (!response.ok) {
+            throw new Error('BERT语义检索失败');
+        }
+
+        const data = await response.json();
+
+        // 转换结果为标准格式
+        const results = data.results ? data.results.map((item, index) => ({
+            id: item.id,
+            rank: index + 1,
+            title: item.title || '无标题',
+            similarity: item.similarity || 0
+        })) : [];
+
+        return {
+            results: results,
+            total: data.total || 0
+        };
+    } else {
+        // 如果没有索引，使用compare-search API的BERT部分
+        updateProgress(50, 'BERT索引未构建，正在使用文本向量化计算相似度...');
+        const response = await fetch('/api/compare-search/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({ query: query, top_k: topK })
+        });
+
+        if (!response.ok) {
+            throw new Error('BERT语义检索失败');
+        }
+
+        const data = await response.json();
+
+        // 只取BERT部分的结果
+        const bertResults = data.results ? data.results.bert.results : [];
+
+        return {
+            results: bertResults,
+            total: data.results ? data.results.bert.count : 0
+        };
+    }
+}
+
+// 更新进度显示
+function updateProgress(percent, message) {
+    const progressBar = document.getElementById('progressBar');
+    const progressText = document.getElementById('progressText');
+    const statusMessages = document.getElementById('statusMessages');
+
+    progressBar.style.width = percent + '%';
+    progressText.textContent = percent + '%';
+
+    const timestamp = new Date().toLocaleTimeString();
+    const messageDiv = document.createElement('div');
+    messageDiv.innerHTML = `<span style="color: #888;">[${timestamp}]</span> ${message}`;
+    statusMessages.insertBefore(messageDiv, statusMessages.firstChild);
+
+    // 保持消息区域不超过5条
+    while (statusMessages.children.length > 5) {
+        statusMessages.removeChild(statusMessages.lastChild);
+    }
+}
+
+// 显示部分结果（关键词或BERT）
+function displayPartialResults(type) {
+    const results = comparisonResults[type];
+
+    if (type === 'keyword') {
+        document.getElementById('keywordTime').textContent = results.time + 'ms';
+        document.getElementById('keywordCount').textContent = results.count + '条';
+
+        const keywordList = document.getElementById('keywordResults');
+        if (results.results && results.results.length > 0) {
+            keywordList.innerHTML = results.results.map(r => `
+                <div class="result-item">
+                    <div class="result-rank">${r.rank}</div>
+                    <div class="result-info">
+                        <div class="result-title">${r.title || '无标题'}</div>
+                        <div class="result-similarity">相似度: ${r.similarity}</div>
+                    </div>
+                </div>
+            `).join('');
+        } else {
+            keywordList.innerHTML = '<div class="empty-state">暂无结果</div>';
+        }
+    } else if (type === 'bert') {
+        document.getElementById('bertTime').textContent = results.time + 'ms';
+        document.getElementById('bertCount').textContent = results.count + '条';
+
+        const bertList = document.getElementById('bertResults');
+        if (results.results && results.results.length > 0) {
+            bertList.innerHTML = results.results.map(r => `
+                <div class="result-item">
+                    <div class="result-rank">${r.rank}</div>
+                    <div class="result-info">
+                        <div class="result-title">${r.title || '无标题'}</div>
+                        <div class="result-similarity">相似度: ${r.similarity}</div>
+                    </div>
+                </div>
+            `).join('');
+        } else {
+            bertList.innerHTML = '<div class="empty-state">暂无结果</div>';
+        }
+    }
+}
+
+// 显示最终对比结果
+function displayFinalResults() {
+    // 更新对比分析部分
+    const comparison = comparisonResults.comparison;
+    document.getElementById('commonCount').textContent = comparison.common_count || 0;
+    document.getElementById('bertOnlyCount').textContent = comparison.only_bert_count || 0;
+    document.getElementById('keywordOnlyCount').textContent = comparison.only_keyword_count || 0;
+    document.getElementById('overlapRate').textContent = (comparison.overlap_rate || 0) + '%';
+
+    // 确保两个结果列表都已显示
+    displayPartialResults('keyword');
+    displayPartialResults('bert');
+}
+
+// 获取CSRF令牌的辅助函数
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+</script>
+{% endblock %}

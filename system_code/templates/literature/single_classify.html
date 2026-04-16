@@ -1,0 +1,247 @@
+{% extends 'literature/base.html' %}
+
+{% block title %}单篇文献分类 - 医学文献智能检索系统{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>单篇文献分类</h1>
+    <p class="intro">输入医学文献的标题和摘要，使用BERT模型进行智能分类</p>
+
+    <div class="classify-input-section">
+        <div class="input-card">
+            <h2>输入文献内容</h2>
+            <div class="form-group">
+                <label for="literatureTitle">文献标题：</label>
+                <input type="text" id="literatureTitle" placeholder="请输入文献标题...">
+            </div>
+            <div class="form-group">
+                <label for="literatureAbstract">文献摘要：</label>
+                <textarea id="literatureAbstract" placeholder="请输入文献摘要..." rows="8"></textarea>
+            </div>
+            <div class="button-group">
+                <button onclick="classifyLiterature()" class="btn-primary">开始分类</button>
+                <button onclick="clearInput()" class="btn-secondary">清空</button>
+                <button onclick="loadSample()" class="btn-secondary">加载示例</button>
+            </div>
+        </div>
+
+        <div id="resultCard" class="result-card" style="display: none;">
+            <h2>分类结果</h2>
+            <div class="result-content">
+                <div class="main-result">
+                    <div class="category-badge" id="resultCategory"></div>
+                    <div class="confidence-bar">
+                        <span>置信度：</span>
+                        <div class="progress">
+                            <div class="progress-bar" id="confidenceBar"></div>
+                        </div>
+                        <span id="confidenceText"></span>
+                    </div>
+                </div>
+                <div class="all-probabilities">
+                    <h3>各类别概率分布</h3>
+                    <div class="probability-list" id="probabilityList"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="loadingCard" class="loading-card" style="display: none;">
+            <div class="spinner"></div>
+            <p>正在使用BERT模型进行分类，请稍候...</p>
+        </div>
+
+        <div id="errorCard" class="error-card" style="display: none;">
+            <h3>分类失败</h3>
+            <p id="errorMessage"></p>
+        </div>
+    </div>
+
+    <div class="category-info-section">
+        <h2>分类类别说明</h2>
+        <div class="category-grid">
+            <div class="category-card">
+                <h3>肿瘤学</h3>
+                <p>包括肺癌、胃癌、肝癌、乳腺癌等各类肿瘤研究</p>
+            </div>
+            <div class="category-card">
+                <h3>内分泌代谢</h3>
+                <p>包括糖尿病、甲状腺疾病、骨质疏松、肥胖等</p>
+            </div>
+            <div class="category-card">
+                <h3>心血管</h3>
+                <p>包括高血压、冠心病、心力衰竭、心律失常等</p>
+            </div>
+            <div class="category-card">
+                <h3>神经内科</h3>
+                <p>包括阿尔茨海默病、帕金森病、脑卒中等</p>
+            </div>
+            <div class="category-card">
+                <h3>感染性疾病</h3>
+                <p>包括肺炎、肝炎、结核病、COVID-19等</p>
+            </div>
+            <div class="category-card">
+                <h3>中医药</h3>
+                <p>包括中药、针灸、推拿等中医药研究</p>
+            </div>
+            <div class="category-card">
+                <h3>呼吸系统</h3>
+                <p>包括慢阻肺、哮喘、肺炎、肺纤维化等</p>
+            </div>
+            <div class="category-card">
+                <h3>消化系统</h3>
+                <p>包括胃炎、肝炎、肝硬化、胰腺炎等</p>
+            </div>
+            <div class="category-card">
+                <h3>泌尿肾脏</h3>
+                <p>包括肾炎、尿路感染、前列腺疾病等</p>
+            </div>
+            <div class="category-card">
+                <h3>儿科</h3>
+                <p>包括儿童疾病、新生儿疾病等</p>
+            </div>
+            <div class="category-card">
+                <h3>医疗AI/技术</h3>
+                <p>包括人工智能、机器学习、5G医疗等</p>
+            </div>
+            <div class="category-card">
+                <h3>公共卫生</h3>
+                <p>包括流行病学、疾病预防、健康管理等</p>
+            </div>
+            <div class="category-card">
+                <h3>风湿免疫</h3>
+                <p>包括类风湿性关节炎、系统性红斑狼疮等</p>
+            </div>
+            <div class="category-card">
+                <h3>精神心理</h3>
+                <p>包括抑郁症、焦虑症、精神分裂症等</p>
+            </div>
+            <div class="category-card">
+                <h3>其他</h3>
+                <p>其他医学领域的研究</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function classifyLiterature() {
+    const title = document.getElementById('literatureTitle').value.trim();
+    const abstract = document.getElementById('literatureAbstract').value.trim();
+    
+    if (!title && !abstract) {
+        alert('请输入文献标题或摘要');
+        return;
+    }
+    
+    const text = title + (abstract ? ' ' + abstract : '');
+    
+    showLoading();
+    
+    fetch('/api/classify/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify({text: text})
+    })
+    .then(response => response.json())
+    .then(data => {
+        hideLoading();
+        if (data.error) {
+            showError(data.error);
+        } else {
+            displayResult(data);
+        }
+    })
+    .catch(error => {
+        hideLoading();
+        showError('分类失败: ' + error.message);
+    });
+}
+
+function displayResult(data) {
+    document.getElementById('resultCard').style.display = 'block';
+    document.getElementById('errorCard').style.display = 'none';
+    
+    const method = data.method === 'bert' ? 'BERT模型分类' : '关键词匹配分类';
+    document.getElementById('resultCategory').textContent = data.category_name + ' (' + method + ')';
+    
+    const confidence = (data.confidence * 100).toFixed(2);
+    document.getElementById('confidenceBar').style.width = confidence + '%';
+    document.getElementById('confidenceText').textContent = confidence + '%';
+    
+    const probList = document.getElementById('probabilityList');
+    probList.innerHTML = '';
+    
+    const sortedProbs = Object.entries(data.probabilities)
+        .sort((a, b) => b[1] - a[1]);
+    
+    sortedProbs.forEach(([cat, prob]) => {
+        const probPercent = (prob * 100).toFixed(2);
+        const isTop = cat === data.category_name;
+        const item = document.createElement('div');
+        item.className = 'probability-item' + (isTop ? ' top' : '');
+        item.innerHTML = `
+            <div class="prob-label">${cat}</div>
+            <div class="prob-bar-container">
+                <div class="prob-bar" style="width: ${probPercent}%"></div>
+            </div>
+            <div class="prob-value">${probPercent}%</div>
+        `;
+        probList.appendChild(item);
+    });
+}
+
+function showLoading() {
+    document.getElementById('loadingCard').style.display = 'flex';
+    document.getElementById('resultCard').style.display = 'none';
+    document.getElementById('errorCard').style.display = 'none';
+}
+
+function hideLoading() {
+    document.getElementById('loadingCard').style.display = 'none';
+}
+
+function showError(message) {
+    document.getElementById('resultCard').style.display = 'none';
+    document.getElementById('errorCard').style.display = 'block';
+    document.getElementById('errorMessage').textContent = message;
+}
+
+function clearInput() {
+    document.getElementById('literatureTitle').value = '';
+    document.getElementById('literatureAbstract').value = '';
+    document.getElementById('resultCard').style.display = 'none';
+    document.getElementById('errorCard').style.display = 'none';
+}
+
+function loadSample() {
+    document.getElementById('literatureTitle').value = 'PD-1抑制剂联合化疗治疗晚期非小细胞肺癌的疗效观察';
+    document.getElementById('literatureAbstract').value = `目的 探讨PD-1抑制剂联合化疗治疗晚期非小细胞肺癌(NSCLC)的临床疗效和安全性。方法 选取2020年1月至2022年6月收治的晚期NSCLC患者120例，随机分为观察组和对照组，各60例。对照组给予标准TP方案化疗，观察组在对照组基础上联合PD-1抑制剂治疗。比较两组客观缓解率(ORR)、疾病控制率(DCR)、无进展生存期(PFS)及不良反应发生率。结果 观察组ORR为55.0%，DCR为88.3%，均高于对照组的35.0%和68.3%(P<0.05)。观察组中位PFS为8.5个月，显著长于对照组的5.2个月(P<0.05)。两组不良反应主要为皮疹、乏力、骨髓抑制等，差异无统计学意义(P>0.05)。结论 PD-1抑制剂联合化疗治疗晚期NSCLC可显著提高疗效，延长PFS，且安全性良好。`;
+}
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+document.getElementById('literatureTitle').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') {
+        document.getElementById('literatureAbstract').focus();
+    }
+});
+</script>
+{% endblock %}

@@ -93,8 +93,8 @@ function closeModal() {
 document.getElementById('categoryForm').onsubmit = function(e) {
     e.preventDefault();
     const formData = new FormData(this);
-    const url = currentEditId ? `/admin/categories/${currentEditId}/edit/` : '/admin/categories/create/';
-    
+    const url = currentEditId ? `/manager/categories/${currentEditId}/edit/` : '/manager/categories/create/';
+
     fetch(url, {
         method: 'POST',
         body: formData
@@ -109,7 +109,7 @@ document.getElementById('categoryForm').onsubmit = function(e) {
 
 function deleteCategory(id, name) {
     if (!confirm(`确定要删除分类 "${name}" 吗？`)) return;
-    fetch(`/admin/categories/${id}/delete/`, { method: 'POST' })
+    fetch(`/manager/categories/${id}/delete/`, { method: 'POST' })
         .then(r => r.json())
         .then(data => {
             if (data.error) alert(data.error);

@@ -18,14 +18,16 @@
                 <li><a href="/literatures/">文献列表</a></li>
                 <li><a href="/search/">文献检索</a></li>
                 <li><a href="/bert-search/">BERT检索</a></li>
+                <li><a href="/compare-search/">对比检索</a></li>
                 <li><a href="/classification/">主题分类</a></li>
+                <li><a href="/single-classify/">单篇分类</a></li>
                 <li><a href="/training/">模型训练</a></li>
                 <li><a href="/evaluation/">模型评估</a></li>
                 {% if user.is_authenticated %}
                     {% if user.profile.role == 'admin' %}
-                    <li><a href="/admin/">管理后台</a></li>
-                    <li><a href="/admin/users/">用户管理</a></li>
-                    <li><a href="/admin/literatures/">文献管理</a></li>
+                    <li><a href="/manager/">管理后台</a></li>
+                    <li><a href="/manager/users/">用户管理</a></li>
+                    <li><a href="/manager/literatures/">文献管理</a></li>
                     {% endif %}
                     <li class="user-info">
                         <span>{{ user.username }}</span>

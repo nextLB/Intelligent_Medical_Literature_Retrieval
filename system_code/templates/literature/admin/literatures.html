@@ -6,7 +6,7 @@
 <div class="admin-card">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
         <h2>文献列表</h2>
-        <button class="btn btn-primary" onclick="location.href='/admin/literatures/create/'">添加文献</button>
+        <button class="btn btn-primary" onclick="location.href='/manager/literatures/create/'">添加文献</button>
     </div>
     
     <form method="get" style="margin-bottom: 20px; display: flex; gap: 10px;">
@@ -42,7 +42,7 @@
                 <td>{{ lit.publish_year|default:"-" }}</td>
                 <td>{{ lit.created_at|date:"Y-m-d" }}</td>
                 <td>
-                    <button class="btn btn-primary btn-sm" onclick="location.href='/admin/literatures/{{ lit.id }}/edit/'">编辑</button>
+                    <button class="btn btn-primary btn-sm" onclick="location.href='/manager/literatures/{{ lit.id }}/edit/'">编辑</button>
                     <button class="btn btn-danger btn-sm" onclick="deleteLiterature({{ lit.id }}, '{{ lit.title|escapejs }}')">删除</button>
                 </td>
             </tr>
@@ -66,7 +66,7 @@
 <script>
 function deleteLiterature(id, title) {
     if (!confirm(`确定要删除文献 "${title}" 吗？`)) return;
-    fetch(`/admin/literatures/${id}/delete/`, { method: 'POST' })
+    fetch(`/manager/literatures/${id}/delete/`, { method: 'POST' })
         .then(r => r.json())
         .then(data => {
             if (data.error) alert(data.error);
